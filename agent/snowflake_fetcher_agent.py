@@ -325,7 +325,7 @@ def initialize_state(state: StateType,config: RunnableConfig) -> StateType:
         logger.error("State must contain context fields")
         raise ValueError("State must contain context fields")
     print("config",config)
-    config_dict = config['configurable']
+    config_dict = {} #config['configurable']
     print("config_dict",config_dict)
 
     logger.info("State initialized successfully.")

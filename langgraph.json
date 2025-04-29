@@ -1,0 +1,6 @@
+{
+  "dependencies": ["."],
+  "graphs": {
+    "snowflake_fetcher_agent": "./agent/snowflake_fetcher_agent.py:graph"
+  }
+}

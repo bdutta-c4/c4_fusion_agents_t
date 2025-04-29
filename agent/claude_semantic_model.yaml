@@ -1,0 +1,484 @@
+tables:
+- name: ATLAS_CALLS_MEETINGS
+  description: 'This table stores information about meetings between our account managers and the clients. It contains data on when the meeting call was logged, the Account Lead who logged the call, key takeaways, recap notes, client win indicators, program presented, and call vibes.'
+  columns:
+  - type: VARCHAR
+    description: The person who is the leader on the account.
+    name: ACCOUNT_LEAD
+  - type: VARCHAR
+    description: Identifier to match with client details.
+    name: JIRA_ID
+  - type: VARCHAR
+    description: A high-level overview of how the call went with the client.
+    name: KEY_TAKEAWAYS
+    sample_values:
+    - Used sales down. Issue with CRM
+    - Kevin needed to reschedule due to a conflict.
+    - no show
+  - type: VARCHAR
+    description: (Is This A Client Win?) This is a yes or now answer. If the column has a 0 or is empty, then it is not a client win, if there is a 1 in the field, it is a client win.
+    name: CLIENT_WIN
+    sample_values:
+    - '0'
+    - '1'
+  - type: VARCHAR
+    description: The program the account lead presented.
+    name: PROGRAM_PRESENTED
+    sample_values:
+    - None Presented
+    - Account Plan
+    - Full Media Mix
+    - Fixed Ops
+    - Google Analytics 4
+    - Video
+    - Inventory Shortage Solutions
+    - Referral Program
+    - Pulse
+    - Advanced Car Reservation
+  - type: VARCHAR
+    description: This is the overall feeling of how the call went that the account lead indicated. The vibes should be classified as confused, distant, frustrated, neutral, no connect, positive, or wandering eye. Ignore any call vibe that has '0', '1', 'None', 'Select One' since that data is irrelevant to the data set.
+    name: CALL_VIBE
+    sample_values:
+    - Neutral
+    - No Connect
+    - Positive
+    - Select One
+    - Frustrated
+    - Distant
+    - Confused
+    - Wandering Eye
+  - type: VARCHAR
+    description: This field shows whether or not the account lead or account team connected with the dealer.
+    name: CONNECTED
+  - type: VARCHAR
+    description: This is something an account lead indicates if they think there should be other account team members should be aware of any issues with the account.
+    name: FLAG
+  - type: TIMESTAMP_NTZ
+    description: The date the call was created in our CRM.
+    name: DATE_CREATED
+  - type: NUMBER
+    description: The month the call was created in our CRM.
+    name: MONTH
+  - type: NUMBER
+    description: The year the call was created in our CRM.
+    name: YEAR
+- name: CLIENT_BUDGETS
+  description: 'Client Budgets Table: This table stores the monthly client budget broken up by month. It has the total client budget - which is the total budget for that month and then it breaks down the budgets into where it was spent, such as remarketing, display, search, shopping, video, and social sources. Each month gives an update on the budget for that month. When asked to do total budget, each month is the total for that month. Do not add months together unless specifically asked to do that. Budget is sometimes referred to as spend.'
+  columns:
+  - type: NUMBER
+    description: Internal autoincremented row ID.
+    name: id
+  - type: VARCHAR
+    description: Identifier to match with client details.
+    name: JIRA_ID
+  - type: FLOAT
+    description: The total budget allocated for the client for that month. This total is broken down into smaller parts in the remainder of the columns. When asking for budget, use this field.
+    name: TOTAL_CLIENT_BUDGET
+  - type: FLOAT
+    description: Total budget allocated for remarketing efforts.
+    name: TOTAL_REMARKETING
+  - type: FLOAT
+    description: Total budget allocated for display advertising.
+    name: TOTAL_DISPLAY
+  - type: FLOAT
+    description: Total budget allocated for search advertising.
+    name: TOTAL_SEARCH
+  - type: FLOAT
+    description: Total budget allocated for discovery and performance max campaigns.
+    name: TOTAL_DISCOVERY_PERFORMANCE_MAX
+  - type: FLOAT
+    description: Total budget allocated for shopping campaigns.
+    name: TOTAL_SHOPPING
+  - type: FLOAT
+    description: Total budget allocated for video advertising.
+    name: TOTAL_VIDEO
+  - type: FLOAT
+    description: Total budget allocated for social media advertising.
+    name: TOTAL_SOCIAL
+  - type: NUMBER
+    description: The month for which the budget data is recorded.
+    name: MONTH
+  - type: NUMBER
+    description: The year for which the budget data is recorded.
+    name: YEAR
+- name: CLIENT_DETAILS
+  description: "Client Details Table: This table stores details about our clients, including their location and their internal client team who are managing the account. This is the main table and most queries will start with this table, as it determines brand and client. Then it associates all of the other tables with the dealership's JIRA_ID. The internal account team is made up of an account director who manages a team lead who manages an account lead. These three people manage the account at the agency. This table also has their website provider which is the company that manages their website. If you are looking for a location, this table has the city, state, and zip codes of the dealerships, which will give you the location."
+  columns:
+  - type: VARCHAR
+    description: Internal company client identification.
+    name: JIRA_ID
+    sample_values:
+    - KUFLEITNER
+    - LANDMARKLI
+  - type: VARCHAR
+    description: Name of the dealership.
+    name: DEALERSHIP_NAME
+    sample_values:
+    - Kufleitner Chrysler Dodge Jeep Ram
+    - Landmark Lincoln
+  - type: VARCHAR
+    description: The group that the dealership is part of.
+    name: DEALERSHIP_GROUP
+  - type: VARCHAR
+    description: The type of dealership or OEM name.
+    name: BRAND
+    sample_values:
+    - Buick_GMC
+    - Honda
+    - Ford
+    - Mazda
+    - Chrysler, Jeep, Dodge, Ram
+    - Other
+  - type: VARCHAR
+    description: The city where the dealership is located.
+    name: CITY
+    sample_values:
+    - Cheektowaga
+    - Walnut Creek
+    - Monticello
+  - type: VARCHAR
+    description: The state where the dealership is located. The state is spelled out (not abbreviated).
+    name: STATE
+    sample_values:
+    - Massachusetts
+    - Texas
+    - California
+    - New Jersey
+  - type: VARCHAR
+    description: The ZIP code of the dealership.
+    name: ZIP
+    sample_values:
+    - '76210'
+    - '95032'
+  - type: VARCHAR
+    description: The OEM program that a dealership is part of. Not all dealerships are in an OEM program.
+    name: OEM_PROGRAM
+    sample_values:
+    - FordDirect AdVantage
+    - Acura Dealer Digital Program
+  - type: VARCHAR
+    description: The name a dealership will have if it is part of an OEM Program.
+    name: OEM_NAME
+    sample_values:
+    - 221230_Autry Morlan GM_C-4 Analytics_IMR Chevrolet Buick GMC
+    - 00509-ford_allanvigilford_adv13
+    - SCD Baxter Subaru La Vista - 404134
+    - Baxter Volkswagen Omaha
+- name: GA4_PAGEANALYTICS_MONTHLY
+  description: 'GA4 Page Analytics Monthly Table: This table contains website traffic data broken out by month and shows the performance of each page on the website.'
+  columns:
+  - type: VARCHAR
+    description: Identifier to match with client details.
+    name: JIRA_ID
+  - type: VARCHAR
+    description: The path of the URL of the page that was visited.
+    name: PAGE_PATH
+    sample_values:
+    - /inventory/new-2024-gmc-sierra-1500-denali-rear-wheel-drive-crew-cab-3gtphged5rg384457/
+    - /reveal/tt1jvgrh/1c6hjtfg8pl522493/title
+    - /new-Merrillville-2024-GMC-Terrain-SLE-3GKALMEG4RL383437
+  - type: NUMBER
+    description: Total number of sessions recorded in the specified date range. A session is a group of user interactions with a client's website or app that take place within a given time frame.
+    name: SESSIONS
+  - type: NUMBER
+    description: Count of the number of total pages viewed by all users during all sessions in the specified date range.
+    name: VIEWS
+  - type: NUMBER
+    description: The number of people who have never visited the site or app before in the specified date range.
+    name: NEW_USERS
+  - type: NUMBER
+    description: Total number of key events in the specified date range. A key event is an event that measures an action that's particularly important to the success of a client's business.
+    name: KEY_EVENTS
+  - type: NUMBER
+    description: Total number of engaged sessions in the specified date range. An engaged session is a session that lasts longer than 10 seconds, has a key event, or has at least 2 pageviews or screenviews.
+    name: ENGAGED_SESSIONS
+  - type: FLOAT
+    description: The average time (in seconds) that a user spends engaged in a session in the specified date range.
+    name: AVG_ENGAGEMENT_TIME_PER_SESSION_IN_SECONDS
+  - type: NUMBER
+    description: The month which the activity occurred.
+    name: MONTH
+    sample_values:
+    - 9
+    - 1
+  - type: NUMBER
+    description: The year the activity occurred.
+    name: YEAR
+    sample_values:
+    - 2023
+    - 2024
+- name: GA4_WEBSITESOURCES_ALLCLIENTS_MONTHLY_2024
+  description: 'GA4 Website Sources All Clients Monthly 2024 Table: This table contains website traffic data for all clients for 2024 broken out by date and segmented by the channel driving traffic to the website.'
+  columns:
+  - type: VARCHAR
+    description: Identifier to match with client details.
+    name: JIRA_ID
+  - type: VARCHAR
+    description: 'The channel by which users arrived at a client''s site/app and triggered a key event. The default channel grouping is typically broken down by: Cross-network, Direct, Display, Email, Organic Search, Organic Shopping, Organic Social, Organic Video, Paid Other, Paid Search, Paid Shopping, Paid Social, Referral, or Unassigned.'
+    name: SESSION_DEFAULT_CHANNEL_GROUP
+    sample_values:
+    - Direct
+    - Display
+    - Email
+    - Organic Search
+    - Paid Search
+    - Paid Shopping
+    - Referral
+    - Unassigned
+    - Cross-network
+    - Paid Video
+    - Organic Social
+    - Organic Shopping
+    - Organic Video
+    - Paid Social
+    - SMS
+    - Paid Other
+    - Mobile Push Notifications
+    - Audio
+    - Affiliates
+  - type: NUMBER
+    description: Total number of sessions recorded in the specified date range. A session is a group of user interactions with a client's website or app that take place within a given time frame.
+    name: SESSIONS
+    sample_values:
+    - 4999
+    - 125
+    - 20488
+  - type: NUMBER
+    description: Count of the number of total pages viewed by all users during all sessions in the specified date range.
+    name: VIEWS
+    sample_values:
+    - 3056
+    - 51
+    - 12912
+  - type: NUMBER
+    description: The number of people who have never visited the site or app before in the specified date range.
+    name: NEW_USERS
+  - type: NUMBER
+    description: Total number of key events in the specified date range. A key event is an event that measures an action that's particularly important to the success of a client's business.
+    name: KEY_EVENTS
+    sample_values:
+    - 314
+    - 78
+    - 13
+  - type: NUMBER
+    description: Total number of engaged sessions in the specified date range. An engaged session is a session that lasts longer than 10 seconds, has a key event, or has at least 2 pageviews or screenviews.
+    name: ENGAGED_SESSIONS
+    sample_values:
+    - 42
+    - 714
+    - 2
+  - type: FLOAT
+    description: The average time (in seconds) that a user spends engaged in a session in the specified date range.
+    name: AVG_ENGAGEMENT_TIME_PER_SESSION_IN_SECONDS
+    sample_values:
+    - 24.083333333333332
+    - 3.0
+    - 1149.6129032258063
+  - type: NUMBER
+    description: The month which the activity occurred.
+    name: MONTH
+- name: GOOGLEADSDATA_BYCAMPAIGN_ALLCLIENTS
+  description: 'Google Ads Data By Campaign All Clients Table: This table stores data related to Google Ads campaigns across all clients - including metrics such as clicks, impressions, conversions, and costs - broken out by campaign type.'
+  columns:
+  - type: VARCHAR
+    description: Identifier to match with client details.
+    name: JIRA_ID
+  - type: VARCHAR
+    description: The campaign type. Campaign type determines where ads appear based on marketing goals, strategy and budget. Campaign types include Search, Display, Shopping, App, Demand Gen, Video, and Performance Max.
+    name: CAMPAIGN_TYPE
+    sample_values:
+    - DISCOVERY
+    - SEARCH
+    - VIDEO
+    - DISPLAY
+    - PERFORMANCE_MAX
+  - type: VARCHAR
+    description: The name of the campaign.
+    name: CAMPAIGN_NAME
+    sample_values:
+    - 02724-ford_allamericanfordinc_adv13_alwayson_newsales_coo+gdn+imb+combo+tt
+    - 08060-ford_fordsquareofmtvernonltd_adv13_google_newsales+geo_all_standard_cosem+locate
+    - '[C-4] SIM - New - Make/Model'
+    - Branded - Fondy Powersports
+  - type: NUMBER
+    description: The number of advertising clicks.
+    name: CLICKS
+  - type: NUMBER
+    description: The number of times an ad was shown.
+    name: IMPRESSIONS
+  - type: FLOAT
+    description: The CTR of the campaign. CTR, also known as click-through-rate is clicks divided by the number of impressions.
+    name: click_through_rate
+  - type: FLOAT
+    description: The amount of money an advertiser spent.
+    name: COST
+  - type: FLOAT
+    description: The number of conversions. A conversion is an action that's counted when someone interacts with an ad and then takes an action that you've defined as valuable to our clients businesses such as calls, form submissions, and/or vehicle details views.
+    name: CONVERSIONS
+  - type: FLOAT
+    description: The average cost per click (CPC).
+    name: average_cost_per_click
+  - type: FLOAT
+    description: Total number of goal completions divided by the ad interactions.
+    name: CONVERSION_RATE
+  - type: FLOAT
+    description: The average cost per view (CPV).
+    name: average_cost_per_view
+  - type: FLOAT
+    description: The video view rate. Video view rate (VVR) is a metric that measures the percentage of impressions that result in a video view.
+    name: VIDEO_VIEW_RATE
+  - type: FLOAT
+    description: The adjusted search impression share. Adjusted impression share is a calculation that estimates the number of impressions that could have been served on a given day.
+    name: ADJUSTED_SEARCH_IMPRESSION_SHARE
+  - type: FLOAT
+    description: Cost per conversion, the average cost of a conversion for a campaign.
+    name: COST_PER_CONVERSION
+  - type: NUMBER
+    description: The month which the activity occurred.
+    name: MONTH
+  - type: NUMBER
+    description: The year the activity occurred.
+    name: YEAR
+- name: INVENTORY_AND_SALES
+  description: 'Inventory and Sales Table: This table contains information about dealership inventory and sales, separated by new and used cars. Inventory and sales both are broken up by month. The inventory number is the average number of cars in inventory for that month. Usually, the more inventory they have, they more cars they can sell for obvious reason. But that inventory to sales ratio is also referred to as their "turn." Each month gives an update on the current state of the inventory. When asked to do total inventory, each month is the total for that month. Do not add months together.'
+  columns:
+  - type: VARCHAR
+    description: Identifier to match with client details.
+    name: JIRA_ID
+  - type: FLOAT
+    description: Average number of new cars in inventory.
+    name: NEW_INVENTORY_AVERAGE
+  - type: FLOAT
+    description: Average number of used cars in inventory.
+    name: USED_INVENTORY_AVERAGE
+  - type: FLOAT
+    description: Number of new cars sold.
+    name: NEW_SALES_TOTAL
+  - type: FLOAT
+    description: Number of used cars sold.
+    name: USED_SALES_TOTAL
+  - type: NUMBER
+    description: The month for which the data is recorded.
+    name: MONTH
+  - type: NUMBER
+    description: The year for which the data is recorded.
+    name: YEAR
+- name: MYSTERY_SHOPS_CLIENT_RESPONSE_TIMES
+  description: 'This table stores client response times for mystery shops, capturing the date and time of creation, user information, and response times for various communication methods. Each mystery shop starts with an initial internet lead (online form submission by the persona) which occurred on the create_date and then includes various event types such as phone calls, text messages, automated emails, and personal email times.
+    The ideal response times are as laid out below:
+    - 5 minutes for text messages and automated emails
+    - 20 minutes for phone calls and personal emails
+    The event-type response_time columns contain the first event of such event-type that was received from the time of the initial internet lead. There may be additional events of each type which can be found in the corresponding Mystery Shop Client Response Transcripts Table. All responses are responding to the initial internet lead performed by the persona. When analyzing the data, disregard any fields with response times of 60 minutes as that indicates there was no response recorded within 60 minutes. As well, any negative reponse times are considered bad data.'
+  columns:
+  - type: VARCHAR
+    description: Identifier to match with client details.
+    name: JIRA_ID
+  - type: VARCHAR
+    description: A unique identifier for each mystery shop entry. Used to match up this mystery shop to other data.
+    name: MYSTERY_SHOP_ID
+    sample_values:
+    - 673f6c67430b951cea33afca
+    - 65fc39ea92c92783cab962f2
+  - type: NUMBER
+    description: The time taken (in minutes) for the dealership to respond with an automated email.
+    name: AUTO_EMAIL_RESPONSE_TIME
+  - type: NUMBER
+    description: The time taken (in minutes) for the dealership to respond with a personal email.
+    name: PERSONAL_EMAIL_RESPONSE_TIME
+  - type: NUMBER
+    description: The time taken (in minutes) for the dealership to respond with a phone call.
+    name: CALL_RESPONSE_TIME
+  - type: NUMBER
+    description: The time taken (in minutes) for the dealership to respond to a text message inquiry.
+    name: TEXT_RESPONSE_TIME
+  - type: TIMESTAMP_NTZ
+    description: The date and time when the initial mystery shop lead was performed.
+    name: CREATE_DATE
+  - type: NUMBER
+    description: The year when the mystery shop was initiated.
+    name: YEAR
+  - type: NUMBER
+    description: The month when the mystery shop was initiated.
+    name: MONTH
+- name: MYSTERY_SHOPS_CLIENT_RESPONSE_TRANSCRIPTS
+  description: "This table contains the detail, type, and transcript of the client responses to internal leads. Each entry is directly related to one mystery shop client summary entry in the Mystery Shops Client Response Times Table. There may be multiple entries in this table related to the one mystery shop client summary entry. The data starts with an initial internet lead which happened on date_started and the dealership''s response happened on the event_date. The event_type specifies the type of response and the transcript contains the response content."
+  columns:
+  - type: VARCHAR
+    description: A unique identifier for each mystery shop entry. The MYSTERY_SHOP_ID comes from the Mystery Shops Client Response Times Table and should be used to match up this mystery shop client response data to the original parent mystery shop client summary entry.
+    name: MYSTERY_SHOP_ID
+    sample_values:
+    - 673f6c67430b951cea33afca
+    - 65fc39ea92c92783cab962f2
+  - type: VARCHAR
+    description: Identifier to match with client details.
+    name: JIRA_ID
+  - type: VARCHAR
+    description: The name of the persona used during the mystery shop.
+    name: PERSONA_NAME
+  - type: VARCHAR
+    description: The type of event that occurred (e.g text, email, voicemail).
+    name: EVENT_TYPE
+  - type: VARCHAR
+    description: Corresponds to EVENT_TYPE and includes the content of the actual response from the dealership. Text event shows actual texts. Voicemail event shows voicemail transcript. Email event shows email subject.
+    name: TRANSCRIPT
+  - type: TIMESTAMP_NTZ
+    description: The date and time when the mystery shop was initiated.
+    name: DATE_STARTED
+  - type: TIMESTAMP_NTZ
+    description: The date and time when a dealership responded with an event during the mystery shop.
+    name: EVENT_DATE
+  - type: NUMBER
+    description: The year when the mystery shop was initiated.
+    name: YEAR
+  - type: NUMBER
+    description: The month when the mystery shop was initiated.
+    name: MONTH
+- name: INVENTORY_DAILY_CLIENTS
+  description: 'Inventory Daily Clients Table: This table contains daily vehicle inventory counts for each dealer, broken down by make, model, trim, and model year.'
+  columns:
+  - type: VARCHAR
+    description: Identifier to match with client details.
+    name: JIRA_ID
+  - type: VARCHAR
+    description: The type of vehicle in inventory (new, used, or certified).
+    name: INVENTORY_TYPE
+    sample_values:
+    - new
+    - used
+    - certified
+  - type: VARCHAR
+    description: The make of the vehicle.
+    name: VEHICLE_MAKE
+    sample_values:
+    - Chevrolet
+    - Kia
+    - Toyota
+  - type: VARCHAR
+    description: The model of the vehicle.
+    name: VEHICLE_MODEL
+    sample_values:
+    - Silverado 2500HD
+    - Ram 1500 Pickup
+    - Elantra
+  - type: VARCHAR
+    description: The trim of the vehicle.
+    name: VEHICLE_TRIM
+    sample_values:
+      - "Base"
+      - "Technology Package"
+      - "LT"
+  - type: NUMBER
+    description: The model year of the vehicle.
+    name: VEHICLE_YEAR
+  - type: NUMBER
+    description: The number of this specific vehicle the dealer has in stock on the given day.
+    name: COUNT
+  - type: NUMBER
+    description: The year when this inventory count was recorded.
+    name: YEAR
+  - type: NUMBER
+    description: The month when this inventory count was recorded.
+    name: MONTH
+  - type: NUMBER
+    description: The day when this inventory count was recorded.
+    name: DAY

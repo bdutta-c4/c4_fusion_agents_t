@@ -16,7 +16,9 @@ from dspy_utils import claude_3_7_sonnet, o3_mini_high, o3_mini_low
 
 logger = logging.getLogger("fusion")
 
-with open("./agent/claude_semantic_model.yaml", "r") as fp:
+current_path=os.path.dirname(os.path.abspath(__file__))
+
+with open(os.path.join(current_path,"claude_semantic_model.yaml"), "r") as fp:
     semantic_model_text = fp.read()
 
 SNOWFLAKE_SQL_INSTRUCTIONS = f"""Here is an overview of the Snowflake tables you can access:

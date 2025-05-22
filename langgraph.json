@@ -1,6 +1,9 @@
 {
   "dependencies": ["."],
   "graphs": {
-    "snowflake_fetcher_agent": "./agent/snowflake_fetcher_agent.py:graph"
+      "snowflake_fetcher_agent": "./agent/snowflake_fetcher_agent.py:graph",
+    "industry_analysis_agent": "./agent/industry_analysis.py:graph",
+    "prompt_executor_agent": "./agent/prompt_executor.py:graph",
+    "dealer_insights_agent": "./agent/dealer_insights.py:graph"
   }
 }

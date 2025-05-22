@@ -452,10 +452,24 @@ class SnowflakeSQLHandler:
     """Wrapper class to handle Snowflake data retrieval"""
 
     def __init__(self, snowflake_config: SnowflakeConfig, cortex_config: CortexConfig):
-        self.cortex_handler = CortexHandler(snowflake_config, cortex_config)
+        self.snowflake_config = snowflake_config
+        self.cortex_config = cortex_config
+        self.cortex_handler = CortexHandler(self.snowflake_config, self.cortex_config)
         self.cortex_handler.open()
         self.df_row_limit: int = 50  # max number of rows to return as
         self.query_error_checker = QuerySpotCheckHandler()
+    
+    def OpenifClosed(self):
+        if self.cortex_handler is None:
+            self.cortex_handler = CortexHandler(self.snowflake_config, self.cortex_config)
+        self.cortex_handler.open()
+        self.df_row_limit: int = 50  # max number of rows to return as
+        self.query_error_checker = QuerySpotCheckHandler()
+
+    def close(self):
+        if self.cortex_handler is not None:
+            self.cortex_handler.close()
+            self.cortex_handler = None
 
     def execute_query(self, user_question: str,
                       create_file_callback: Callable[[IO], None],
@@ -523,10 +537,21 @@ class SnowflakeSQLHandler:
 
     def execute_query_raw(self, query: str, params: Sequence[Any] | dict[Any, Any] | None = None) -> pd.DataFrame:
         """Execute a raw SQL query with the given parameters and return a dataframe"""
+        max_retry =2
+        attempt = 0
         if params is None:
             params = ()
         with self.cortex_handler.snowflake_connection.cursor(DictCursor) as cursor:
-            cursor.execute(query, params)
-            rows = cursor.fetchall()
-            df = pd.DataFrame(rows)
-        return df
+            while attempt < max_retry:
+                try:
+                    cursor.execute(query, params)
+                    rows = cursor.fetchall()
+                    df = pd.DataFrame(rows)
+                    return df
+                except Exception as e:
+                    attempt += 1
+                    OpenifClosed()
+                    if attempt == max_retry:
+                        logger.error(f"Failed to execute query: {e}")
+                        raise
+#        return df

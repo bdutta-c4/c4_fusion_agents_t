@@ -10,17 +10,21 @@ from dotenv import load_dotenv
 
 sys.path.append("agent")
 
+
 from sql_handler import SnowflakeSQLHandler
 from queries import *
 from cortex import CortexConfig, SnowflakeConfig
 import fetchdata_knownqueries as fetchdata
 
+import json
 
 import logging
 
 LOG_FILE = 'FusionDashboard.log'
 
-load_dotenv("./agent/.env", override=True)
+current_path=os.path.dirname(os.path.abspath(__file__))
+
+load_dotenv(os.path.join(current_path,".env"), override=True)
 
 # Configure the logging system
 logging.basicConfig(
@@ -137,7 +141,7 @@ def basic_info_node(state: StateType) -> StateType:
     TABLE_GROUP_NAME = "basic_info"
 
     config_dict = state["context"].get("config")
-    if config_dict.get("DF_TABLE_GROUPS"):
+    if config_dict and config_dict.get("DF_TABLE_GROUPS"):
         df_tables_group = config_dict.get("DF_TABLE_GROUPS", [])
         if TABLE_GROUP_NAME in df_tables_group:
             proceed = True
@@ -146,13 +150,38 @@ def basic_info_node(state: StateType) -> StateType:
     else:
         proceed = True
     
-    print(TABLE_GROUP_NAME,proceed)
+    #print(TABLE_GROUP_NAME,proceed)
+
     if not proceed:
         return state    
 
     try:
         fullctx = state["context"]
+        sql_handler.OpenifClosed()
         result = fetchdata.fetch_basic_info(fullctx,sql_handler)
+        #sql_handler
+        
+        # check if state,brand and OEM name were added by user
+        # if not, add them
+        df_basic_dict = result["basic_info"]["df_basic"]
+        df_basic = json.loads(df_basic_dict)
+
+        statenm = df_basic["STATE"]["0"]
+        brandnm = df_basic["BRAND"]["0"]
+        oemnm = df_basic["OEM_NAME"]["0"]
+
+        # statenm = result["basic_info"]["df_basic"]["state"]["0"]
+        # brand = result["basic_info"]["df_basic"]["brand"]["0"]
+        # oem_name = result["basic_info"]["df_basic"]["OEM_Name"]["0"]
+
+        if not fullctx.get("state"):
+            fullctx["state"] = statenm
+        if not fullctx.get("brand"):
+            fullctx["brand"] = brandnm
+        if not fullctx.get("oem_name"):
+            fullctx["oem"] = oemnm
+
+
     except Exception as e:
         logging.error(f"Error in fetch_basic_info: {e}")
         raise
@@ -175,12 +204,12 @@ def inventory_data_node(state: StateType) -> StateType:
     else:
         proceed = True
     
-    print(TABLE_GROUP_NAME,proceed)
     if not proceed:
         return state
     
     try:
         fullctx = state["context"]
+        sql_handler.OpenifClosed()
         result = fetchdata.fetch_inventory_data(fullctx,sql_handler)
     except Exception as e:
         logging.error(f"Error in fetch_inventory_data: {e}")
@@ -203,11 +232,12 @@ def marketing_data_node(state: StateType) -> StateType:
     else:
         proceed = True
     
-    print(TABLE_GROUP_NAME,proceed)
+    #print(TABLE_GROUP_NAME,proceed)
     if not proceed:
         return state
     try:
         fullctx = state["context"]
+        sql_handler.OpenifClosed()
         result = fetchdata.fetch_marketing_data(fullctx,sql_handler)
     except Exception as e:
         logging.error(f"Error in fetch_marketing_data: {e}")
@@ -231,11 +261,12 @@ def budget_data_node(state: StateType) -> StateType:
     else:
         proceed = True
     
-    print(TABLE_GROUP_NAME,proceed)
+    #print(TABLE_GROUP_NAME,proceed)
     if not proceed:
         return state
     try:
         fullctx = state["context"]
+        sql_handler.OpenifClosed()
         result = fetchdata.fetch_budget_data(fullctx,sql_handler)
     except Exception as e:
         logging.error(f"Error in fetch_budget_data: {e}")
@@ -258,11 +289,12 @@ def performance_data_node(state: StateType) -> StateType:
     else:
         proceed = True
     
-    print(TABLE_GROUP_NAME,proceed)
+    #print(TABLE_GROUP_NAME,proceed)
     if not proceed:
         return state
     try:
         fullctx = state["context"]
+        sql_handler.OpenifClosed()
         result = fetchdata.fetch_performance_data(fullctx,sql_handler)
     except Exception as e:
         logging.error(f"Error in fetch_performance_data: {e}")
@@ -273,8 +305,18 @@ def performance_data_node(state: StateType) -> StateType:
 def combine_results(state: StateType) -> DashboardDataJson:
     """Combine all fetched data into DescriptiveDashboardData."""
     logger.info("Combining results...")
-    print("state keys:", state["context"].keys())
-    #print(state)
+ #   print("state keys:", state["context"].keys())
+    
+    import json
+
+    def safe_serialize(context):
+        for key, value in context.items():
+            try:
+                json.dumps({key: value})
+            except Exception as e:
+                print(f"Cannot serialize key '{key}' because: {e}")
+
+    safe_serialize( state["context"])
 
     basic = state["context"].get("basic_info")
     inv = state["context"].get("inv_data")
@@ -325,7 +367,9 @@ def initialize_state(state: StateType,config: RunnableConfig) -> StateType:
         logger.error("State must contain context fields")
         raise ValueError("State must contain context fields")
     print("config",config)
-    config_dict = {} #config['configurable']
+    #config_dict = config['configurable']
+    config_dict = {} #config['configurable'].get("DF_TABLES") | config['configurable'].get("DF_TABLE_GROUPS") | config['configurable'].get("DF_NL_QUERY")
+    
     print("config_dict",config_dict)
 
     logger.info("State initialized successfully.")
@@ -369,13 +413,14 @@ def create_dashboard_graph() -> StateGraph:
     workflow.add_node("nl_to_sql", nl_to_sql_node)
 
     workflow.add_edge(START, "init")
+    workflow.add_edge("init", "basic_info")
     
     # Fan-out from init
-    for node in ["basic_info", "marketing","inventory", "budget", "performance"]:
-        workflow.add_edge("init", node)
+    for node in ["marketing","inventory", "budget", "performance"]:
+        workflow.add_edge("basic_info", node)
 
     # Add edges from parallel nodes to combine with condition
-    for node in ["basic_info", "marketing","inventory", "budget", "performance"]:
+    for node in ["marketing","inventory", "budget", "performance"]:
         workflow.add_edge(node,"combine")
 
     workflow.add_edge("init", "single_table")
@@ -389,7 +434,8 @@ def create_dashboard_graph() -> StateGraph:
     logger.info("Dashboard graph created successfully.")
     return workflow.compile()
 
-config={}
+#config={}
+
 sql_handler = get_sql_handler()
 logger.info("SQL handler initialized.")
 

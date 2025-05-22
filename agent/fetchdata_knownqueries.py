@@ -245,7 +245,10 @@ def fetch_inventory_data(context: dict, sql_handler: SnowflakeSQLHandler) -> dic
     print("After first 2")
     
     #df_inventory_lb = get_inventory_leaderboard_query(**ctx).execute(executor)
-    df_inventory_lb = None
+    
+    df_inventory_lb = get_inventory_leaderboard_query(state_filter=context["state"], brand_filter=context["brand"], limit=None)(**ctx).execute(executor)
+    
+    #df_inventory_lb = None
     print("After first 3")
     df_inventory_lb_state_brand_all = get_inventory_leaderboard_query(
         state_filter=context["state"], brand_filter=context["brand"], limit=None)(**ctx).execute(executor)
@@ -257,8 +260,8 @@ def fetch_inventory_data(context: dict, sql_handler: SnowflakeSQLHandler) -> dic
     
     df_inv_agg_serialized = df_serializer(df_inv_agg.data)
     df_monthly_inv_serialized = df_serializer(df_monthly_inv.data)
-    #df_inventory_lb_serialized = df_serializer(df_inventory_lb.data)
-    df_inventory_lb_serialized = None
+    df_inventory_lb_serialized = df_serializer(df_inventory_lb.data)
+    #df_inventory_lb_serialized = None
     df_inventory_lb_state_brand_all_serialized = df_serializer(df_inventory_lb_state_brand_all.data)
     df_inventory_lb_state_limit_serialized = df_serializer(df_inventory_lb_state_limit.data)
     df_inventory_lb_brand_limit_serialized = df_serializer(df_inventory_lb_brand_limit.data)
@@ -362,6 +365,7 @@ def fetch_performance_data(context: dict, sql_handler: SnowflakeSQLHandler) -> d
     
     df_mystery = get_mystery_shop_stats_query(**ctx).execute(executor)
     df_mystery_monthly = get_monthly_mystery_shop_breakdown_query(**ctx).execute(executor)
+    df_mystery_all=get_all_mystery_shop_stats_query(**ctx).execute(executor)
     df_rank = get_overall_sales_rank_query(**ctx).execute(executor)
     df_oem = get_oem_sales_rank_query(**ctx).execute(executor)
     df_monthly_all = get_all_dealers_monthly_data_query(**ctx).execute(executor)
@@ -375,10 +379,12 @@ def fetch_performance_data(context: dict, sql_handler: SnowflakeSQLHandler) -> d
     df_monthly_all_serialized = df_serializer(df_monthly_all.data)
     df_missing_channels_serialized = df_serializer(df_missing_channels.data)
     df_avg_monthly_sales_serialized = df_serializer(df_avg_monthly_sales.data)
+    df_mystery_all_serialized = df_serializer(df_mystery_all.data)
     
     result = {"performance_data": {
         "df_mystery": df_mystery_serialized,
         "df_mystery_monthly": df_mystery_monthly_serialized,
+        "df_mystery_all": df_mystery_all_serialized,
         "df_rank": df_rank_serialized,
         "df_oem": df_oem_serialized,
         "df_monthly_all": df_monthly_all_serialized,

@@ -7,7 +7,7 @@ Copyright 2025 C-4 Analytics, LLC
 '''
 
 import logging
-import sys
+import sys,os
 from dataclasses import dataclass
 from functools import wraps
 from time import sleep
@@ -23,6 +23,7 @@ from snowflake.core import Root
 
 logger = logging.getLogger("fusion")
 
+current_path=os.path.dirname(os.path.abspath(__file__))
 
 @dataclass
 class SnowflakeConfig:
@@ -50,6 +51,8 @@ class CortexConfig:
 
 def get_snowflake_connection(config: SnowflakeConfig) -> snowflake.connector.SnowflakeConnection:
     """Connect to snowflake via provided credentials"""
+
+
     if config.private_key_file is not None:
         return snowflake.connector.connect(
             account=config.account,
@@ -59,12 +62,12 @@ def get_snowflake_connection(config: SnowflakeConfig) -> snowflake.connector.Sno
             database=config.database,
             schema=config.schema,
             role=config.role,
-            private_key_file=config.private_key_file
+            private_key_file=os.path.join(current_path,config.private_key_file)
         )
     else:
         try:
             p_key = serialization.load_pem_private_key(
-                config.private_key,
+                os.path.join(current_path,config.private_key),
                 password=config.private_key_passphrase,
                 backend=default_backend()
             )
@@ -89,7 +92,9 @@ def get_snowflake_connection(config: SnowflakeConfig) -> snowflake.connector.Sno
             warehouse=config.warehouse,
             role=config.role,
             database=config.database,
-            schema=config.schema
+            schema=config.schema,
+            client_session_keep_alive=True,
+            abort_detached_query=True
         )
 
 

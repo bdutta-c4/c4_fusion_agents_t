@@ -882,7 +882,7 @@ def create_graph()-> StateGraph:
     
     # Compile the workflow into an executable graph
     graph = workflow.compile()
-    graph.name = "Dealer Insights"  # This defines the custom name in LangSmith
+    graph.name = "FusionDealerInsights"  # This defines the custom name in LangSmith
     return graph
 
 #weave.init('c4-dealer-insights')

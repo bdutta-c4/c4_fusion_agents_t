@@ -29,6 +29,9 @@ dependencies = [
     "semopy",
     "statsmodels",
     "lifelines",
+    "langchain",
+    "langchain-openai",
+    
 ]
 
 

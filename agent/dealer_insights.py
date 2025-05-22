@@ -22,7 +22,7 @@ from prompt_executor import create_graph as prompt_executor_graph
 
 ### TO DO
 # Only load weave if it is Dev
-import weave
+#import weave
 
 LOG_FILE = 'Fusion-dealer_insights.log'
 
@@ -159,7 +159,7 @@ def grouped_regression(df, x_col, y_col, group):
 class StateType(Dict[str, Any]):
     context: Annotated[Dict[str, Any], operator.or_]
 
-@weave.op()
+#@weave.op()
 def execprompt(payload, promptnm):
     graph = prompt_executor_graph()
     print("Prompt executor graph created successfully.")
@@ -167,13 +167,13 @@ def execprompt(payload, promptnm):
     aimsg = output["context"][promptnm] 
     return aimsg.dict()["content"]
 
-@weave.op()
+#@weave.op()
 def get_snowflake_data_node(state: StateType) -> StateType:
     sfgraph = create_dashboard_graph()
     output = sfgraph.invoke(state)
     return output
 
-@weave.op()
+#@weave.op()
 def missing_channels_node(state: StateType) -> StateType:
     table_dfs = deserialize_output(state)
     dealer_nm = table_dfs["df_basic"]["DEALERSHIP_NAME"][0]
@@ -186,7 +186,7 @@ def missing_channels_node(state: StateType) -> StateType:
     print("Missing channels content:",result)
     return {"context": result}
 
-@weave.op()
+#@weave.op()
 def mystery_shops(state: StateType) -> StateType:
     table_dfs = deserialize_output(state)
     dealer_nm = table_dfs["df_basic"]["DEALERSHIP_NAME"][0]
@@ -198,7 +198,7 @@ def mystery_shops(state: StateType) -> StateType:
     logger.info("generated mystery shops content")
     return {"context": result}
 
-@weave.op()
+#@weave.op()
 def budget_efficiency(state: StateType) -> StateType:
     table_dfs = deserialize_output(state)   
     dealer_nm = table_dfs["df_basic"]["DEALERSHIP_NAME"][0]
@@ -225,7 +225,7 @@ def budget_efficiency(state: StateType) -> StateType:
     logger.info("generated budget efficiency content")
     return {"context": result}
 
-@weave.op()
+#@weave.op()
 def inventory_turnover(state: StateType) -> StateType:
     table_dfs = deserialize_output(state)
     dealer_nm = table_dfs["df_basic"]["DEALERSHIP_NAME"][0]
@@ -252,7 +252,7 @@ def inventory_turnover(state: StateType) -> StateType:
     logger.info("generated inventory turnover content")
     return {"context": result}
 
-@weave.op()
+#@weave.op()
 def inventory_trends(state: StateType)-> StateType:
     table_dfs = deserialize_output(state)
     dealer_nm = table_dfs["df_basic"]["DEALERSHIP_NAME"][0]
@@ -275,7 +275,7 @@ def inventory_trends(state: StateType)-> StateType:
     logger.info("generated inventory turnover content")
     return {"context": result}
 
-@weave.op()
+#@weave.op()
 def marketing_spend_v_sales_trend(state: StateType):
     table_dfs = deserialize_output(state)
     dealer_nm = table_dfs["df_basic"]["DEALERSHIP_NAME"][0]
@@ -315,7 +315,7 @@ def marketing_spend_v_sales_trend(state: StateType):
     logger.info("generated marketing_spend_v_sales_trend content")
     return {"context": result}
 
-@weave.op()
+#@weave.op()
 def inventory_trend_analysis(state: StateType) -> StateType:
     table_dfs = deserialize_output(state)
     df_monthly_all = table_dfs["df_monthly_all"]
@@ -496,7 +496,7 @@ def inventory_trend_analysis(state: StateType) -> StateType:
     logger.info("generated inventory analysis content")
     return {"context": result}
 
-@weave.op()
+#@weave.op()
 def budget_spend_analysis(state: StateType):
     table_dfs = deserialize_output(state)   
     df_monthly_all = table_dfs["df_monthly_all"]
@@ -623,7 +623,7 @@ def budget_spend_analysis(state: StateType):
     logger.info("generated budget spend analysis content")
     return {"context": result}
 
-@weave.op()
+#@weave.op()
 def Website_traffic_analysis(state: StateType)->StateType:
     table_dfs = deserialize_output(state)   
     df_basic = table_dfs["df_basic"]
@@ -786,7 +786,7 @@ def Website_traffic_analysis(state: StateType)->StateType:
     logger.info("Website traffic content generated")
     return {"context": result}
 
-@weave.op()
+#@weave.op()
 def get_channel_analysis(state: StateType)->StateType:
     table_dfs = deserialize_output(state)   
     df_monthly_all = table_dfs["df_monthly_all"]
@@ -885,6 +885,6 @@ def create_graph()-> StateGraph:
     graph.name = "Dealer Insights"  # This defines the custom name in LangSmith
     return graph
 
-weave.init('c4-dealer-insights')
+#weave.init('c4-dealer-insights')
 graph = create_graph()
 

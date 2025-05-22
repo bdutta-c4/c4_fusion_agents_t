@@ -63,7 +63,7 @@ def industry_analysis_economic(state: StateType, config: RunnableConfig) -> Dict
     
     return {"context": {"industry_analysis_economic": result}}
 
-@weave.op()
+#@weave.op()
 def industry_analysis_market(state: StateType, config: RunnableConfig) -> Dict[str, Any]:
     """Each node does work."""
     #configuration = config["configurable"]
@@ -107,7 +107,7 @@ def industry_analysis_brand(state: StateType, config: RunnableConfig) -> Dict[st
     
     return {"context": {"industry_analysis_brand": result}}
 
-@weave.op()
+#@weave.op()
 def industry_analysis_supplychain(state: StateType, config: RunnableConfig) -> Dict[str, Any]:
     """Each node does work."""
     #configuration = config["configurable"]

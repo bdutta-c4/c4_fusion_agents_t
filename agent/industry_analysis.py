@@ -31,7 +31,6 @@ logger = logging.getLogger("FusionIndustryAnalysis")
 class StateType(Dict[str, Any]):
     context: Annotated[Dict[str, Any], operator.or_]
 
-#LANGSMITH_API_KEY = "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"
 LANGSMITH_API_KEY=os.environ.get("LANGSMITH_API_KEY")
 langsmith_client = Client(api_key=LANGSMITH_API_KEY)
 

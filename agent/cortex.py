@@ -62,7 +62,11 @@ def get_snowflake_connection(config: SnowflakeConfig) -> snowflake.connector.Sno
             database=config.database,
             schema=config.schema,
             role=config.role,
-            private_key_file=os.path.join(current_path,config.private_key_file)
+            private_key_file=os.path.join(current_path,config.private_key_file),
+            client_session_keep_alive=True,
+            abort_detached_query=True,
+            disable_ocsp_checks=True,
+
         )
     else:
         try:
@@ -94,7 +98,9 @@ def get_snowflake_connection(config: SnowflakeConfig) -> snowflake.connector.Sno
             database=config.database,
             schema=config.schema,
             client_session_keep_alive=True,
-            abort_detached_query=True
+            abort_detached_query=True,
+            disable_ocsp_checks=True,
+
         )
 
 

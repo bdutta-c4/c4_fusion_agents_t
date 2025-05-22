@@ -550,7 +550,7 @@ class SnowflakeSQLHandler:
                     return df
                 except Exception as e:
                     attempt += 1
-                    OpenifClosed()
+                    self.OpenifClosed()
                     if attempt == max_retry:
                         logger.error(f"Failed to execute query: {e}")
                         raise

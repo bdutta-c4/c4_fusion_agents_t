@@ -6,9 +6,12 @@ import pandas as pd
 from langgraph.graph import START, END, StateGraph
 import operator 
 import sys,os
+
 from dotenv import load_dotenv
 
+
 sys.path.append("agent")
+from  agent.environments import load_aws_variables, load_environment
 
 
 from sql_handler import SnowflakeSQLHandler
@@ -25,6 +28,8 @@ LOG_FILE = 'FusionDashboard.log'
 current_path=os.path.dirname(os.path.abspath(__file__))
 
 load_dotenv(os.path.join(current_path,".env"), override=True)
+
+load_environment()
 
 # Configure the logging system
 logging.basicConfig(
@@ -82,47 +87,99 @@ class ConfigSchema(TypedDict):
     DF_NL_QUERY: Optional[str]
 
 
+# Common settings that don't change between environments
+SCHEMA = "APP"
+STAGE = "SEMANTIC_MODEL_STAGE"
+WAREHOUSE = "FUSION_WH"
+
+
+def _get_environment_specific_configs():
+    """
+    Get environment-specific configuration values based on APP_ENVIRONMENT
+
+    Returns:
+        tuple: (database, role, file, client_name_search_service)
+    """
+    # Determine environment - default to 'dev' if not specified
+    env = os.getenv("APP_ENVIRONMENT", "dev").lower()
+
+    if env == "prod" or env == "production":
+        logger.info("Using PRODUCTION Snowflake configuration")
+        return (
+            "FUSION_PROD",  # database
+            "FUSION_PROD_APP_ROLE",  # role
+            "semantic_model_prod.yaml",  # file
+            "FUSION_PROD_CLIENT_NAME_SEARCH_SERVICE"  # client name search service
+        )
+    else:  # default to development
+        logger.info("Using DEVELOPMENT Snowflake configuration")
+        return (
+            "FUSION_DEV",  # database
+            "FUSION_DEV_APP_ROLE",  # role
+            "semantic_model_dev.yaml",  # file
+            "FUSION_DEV_CLIENT_NAME_SEARCH_SERVICE"  # client name search service
+        )
+
 def get_sql_handler():
     """Dependency to get SQL handler instance."""
+    # Get environment-specific settings
+    database, role, file, client_name_search_service  = _get_environment_specific_configs()
     try:
-        HOST = os.environ['HOST']
-        USER = os.environ['USER']
-        SNOWFLAKE_ACCOUNT = os.environ['SNOWFLAKE_ACCOUNT']
-        DATABASE = "CORTEX_ANALYST_DEMO"
-        SCHEMA = "FUSION_DATA"
-        STAGE = "RAW_DATA"
-        FILE = "semantic_model_latest.yaml"
-        WAREHOUSE = "COMPUTE_WH"
-        ROLE = "CORTEX_USER_ROLE"
+        snowflake_host = os.environ['SNOWFLAKE_HOST']
+        snowflake_user = os.environ['SNOWFLAKE_USER']
+        snowflake_account = os.environ['SNOWFLAKE_ACCOUNT']
+        
+        missing_params = []
+        if not snowflake_host:
+            missing_params.append("SNOWFLAKE_HOST")
+        if not snowflake_user:
+            missing_params.append("SNOWFLAKE_USER")
+        if not snowflake_account:
+            missing_params.append("SNOWFLAKE_ACCOUNT")
 
+        if missing_params:
+            raise KeyError(f"Missing required Snowflake connection parameters: {', '.join(missing_params)}")
+
+        # Handle private key authentication
         if os.getenv("USE_PRIVATE_KEY_FILE"):
-            PRIVATE_KEY_FILE = os.environ['PRIVATE_KEY_FILE']
-            PRIVATE_KEY = None
-            PASSPHRASE = None
+            private_key_file = os.getenv('PRIVATE_KEY_FILE')
+            private_key = None
+            passphrase = None
+            if not private_key_file:
+                raise KeyError("Missing PRIVATE_KEY_FILE environment variable")
         else:
-            PRIVATE_KEY_FILE = None
-            PRIVATE_KEY = os.environ['PRIVATE_KEY'].encode("utf-8")
-            PASSPHRASE = os.environ['PRIVATE_KEY_PASSPHRASE'].encode("utf-8")
+            private_key_file = None
+            private_key = os.getenv('SNOWFLAKE_PRIVATE_KEY')
+            passphrase = os.getenv(
+                'SNOWFLAKE_PRIVATE_KEY_PASSPHRASE')
+
+            if not all([private_key, passphrase]):
+                raise KeyError("Missing Snowflake private key credentials")
+
+            private_key = private_key.encode("utf-8")
+            passphrase = passphrase.encode("utf-8")
+
     except KeyError as e:
         raise RuntimeError(f"Missing environment variable: {e}")
 
     snowflake_config = SnowflakeConfig(
-        SNOWFLAKE_ACCOUNT,
-        USER,
+        snowflake_account,
+        snowflake_user,
         WAREHOUSE,
-        ROLE,
-        HOST,
-        DATABASE,
+        role,
+        snowflake_host,
+        database,
         SCHEMA,
-        PRIVATE_KEY_FILE,
-        PRIVATE_KEY,
-        PASSPHRASE)
+        private_key_file,
+        private_key,
+        passphrase)
 
     cortex_config = CortexConfig(
-        DATABASE,
+        database,
         SCHEMA,
         STAGE,
-        FILE)
+        file,
+        client_name_search_service)
     try:
         handler = SnowflakeSQLHandler(snowflake_config, cortex_config)
         return handler
@@ -363,6 +420,7 @@ def combine_results(state: StateType) -> DashboardDataJson:
 def initialize_state(state: StateType,config: RunnableConfig) -> StateType:
     """Initialize state before parallel processing."""
     #print("In init state", state)
+
     if not state.get("context"):
         logger.error("State must contain context fields")
         raise ValueError("State must contain context fields")

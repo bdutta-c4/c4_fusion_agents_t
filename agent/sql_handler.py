@@ -554,4 +554,4 @@ class SnowflakeSQLHandler:
                     if attempt == max_retry:
                         logger.error(f"Failed to execute query: {e}")
                         raise
-#        return df
+

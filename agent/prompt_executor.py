@@ -11,6 +11,8 @@ import logging
 LOG_FILE = 'FusionPromptExecutor.log'
 
 load_dotenv("./agent/.env", override=True)
+from  agent.environments import load_environment
+load_environment()
 
 # Configure the logging system
 logging.basicConfig(

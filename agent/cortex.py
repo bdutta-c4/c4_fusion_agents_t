@@ -47,6 +47,7 @@ class CortexConfig:
     schema: str
     stage: str
     semantic_model_filename: str
+    client_name_search_service: str
 
 
 def get_snowflake_connection(config: SnowflakeConfig) -> snowflake.connector.SnowflakeConnection:
@@ -62,7 +63,8 @@ def get_snowflake_connection(config: SnowflakeConfig) -> snowflake.connector.Sno
             database=config.database,
             schema=config.schema,
             role=config.role,
-            private_key_file=os.path.join(current_path,config.private_key_file),
+            #private_key_file=os.path.join(current_path,config.private_key_file),
+            private_key_file=config.private_key_file,
             client_session_keep_alive=True,
             abort_detached_query=True,
             disable_ocsp_checks=True,
@@ -71,7 +73,8 @@ def get_snowflake_connection(config: SnowflakeConfig) -> snowflake.connector.Sno
     else:
         try:
             p_key = serialization.load_pem_private_key(
-                os.path.join(current_path,config.private_key),
+                #os.path.join(current_path,config.private_key),
+                config.private_key,
                 password=config.private_key_passphrase,
                 backend=default_backend()
             )

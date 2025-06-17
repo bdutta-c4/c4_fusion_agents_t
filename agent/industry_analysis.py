@@ -9,13 +9,12 @@ import sys,os
 from dotenv import load_dotenv
 from langsmith import Client
 from langchain_core.prompts import ChatPromptTemplate
-### TO DO
-# Only load weave if it is Dev
-# import weave
 
 LOG_FILE = 'Fusion-industry_analysis.log'
 
 load_dotenv("./agent/.env", override=True)
+from  agent.environments import load_environment
+load_environment()
 
 # Configure the logging system
 logging.basicConfig(
@@ -51,7 +50,7 @@ def execute_prompt(prompt: ChatPromptTemplate, state: StateType) -> StateType:
         raise
     return result
 
-#@weave.op()
+
 def industry_analysis_economic(state: StateType, config: RunnableConfig) -> Dict[str, Any]:
     """Each node does work."""
     #configuration = config["configurable"].get("configuration")
@@ -62,7 +61,7 @@ def industry_analysis_economic(state: StateType, config: RunnableConfig) -> Dict
     
     return {"context": {"industry_analysis_economic": result}}
 
-#@weave.op()
+
 def industry_analysis_market(state: StateType, config: RunnableConfig) -> Dict[str, Any]:
     """Each node does work."""
     #configuration = config["configurable"]
@@ -73,7 +72,6 @@ def industry_analysis_market(state: StateType, config: RunnableConfig) -> Dict[s
     
     return {"context": {"industry_analysis_market": result}}
 
-#@weave.op()
 def industry_analysis_consumer(state: StateType, config: RunnableConfig) -> Dict[str, Any]:
     """Each node does work."""
     #configuration = config["configurable"]
@@ -84,7 +82,6 @@ def industry_analysis_consumer(state: StateType, config: RunnableConfig) -> Dict
     
     return {"context": {"industry_analysis_consumer": result}}
 
-#@weave.op()
 def industry_analysis_external(state: StateType, config: RunnableConfig) -> Dict[str, Any]:
     """Each node does work."""
     #configuration = config["configurable"]
@@ -95,7 +92,6 @@ def industry_analysis_external(state: StateType, config: RunnableConfig) -> Dict
     
     return {"context": {"industry_analysis_external": result}}   
 
-#@weave.op()
 def industry_analysis_brand(state: StateType, config: RunnableConfig) -> Dict[str, Any]:
     """Each node does work."""
     #configuration = config["configurable"]
@@ -106,7 +102,7 @@ def industry_analysis_brand(state: StateType, config: RunnableConfig) -> Dict[st
     
     return {"context": {"industry_analysis_brand": result}}
 
-#@weave.op()
+
 def industry_analysis_supplychain(state: StateType, config: RunnableConfig) -> Dict[str, Any]:
     """Each node does work."""
     #configuration = config["configurable"]
@@ -152,4 +148,3 @@ def create_graph() -> StateGraph:
 
 graph = create_graph()
 graph.name = "FusionIndustryAnalysisGraph" 
-#weave.init('c4-industry-analysis')

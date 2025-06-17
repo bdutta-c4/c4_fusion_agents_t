@@ -61,12 +61,16 @@ def load_aws_variables():
     return secrets
 
 def load_environment():
-    #secrets = load_aws_variables()
-    #if secrets:
+    # secrets = load_aws_variables()
+    # if secrets:
     #    return True
-    #else:
+    # else:
     #    return False
-    from dotenv import load_dotenv
-    load_dotenv()
+    from dotenv_loader import load_encrypted_dotenv
+    from pathlib import Path
+
+    passphrase=os.getenv("DOTENV_PASSPHRASE")
+    BASE_DIR = Path(__file__).resolve().parent   
+    #load_encrypted_dotenv(".env.enc",passphrase)  
+    load_encrypted_dotenv(BASE_DIR / ".env.enc",passphrase)
     return True
-    

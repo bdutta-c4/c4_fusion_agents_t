@@ -61,9 +61,12 @@ def load_aws_variables():
     return secrets
 
 def load_environment():
-    secrets = load_aws_variables()
-    if secrets:
-        return True
-    else:
-        return False
+    #secrets = load_aws_variables()
+    #if secrets:
+    #    return True
+    #else:
+    #    return False
+    from dotenv import load_dotenv
+    load_dotenv()
+    return True
     

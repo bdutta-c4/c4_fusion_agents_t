@@ -9,8 +9,15 @@
   "store": {
     "ttl": {
       "refresh_on_read": false,
-      "sweep_interval_minutes": 60,
+      "sweep_interval_minutes": 1440,
       "default_ttl": 10080 
+    }
+  },
+  "checkpointer": {
+    "ttl": {
+      "strategy": "delete",
+      "sweep_interval_minutes": 1440,
+      "default_ttl": 10080
     }
   }
 }

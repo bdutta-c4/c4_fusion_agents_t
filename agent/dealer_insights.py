@@ -386,7 +386,9 @@ def inventory_trend_analysis(state: StateType) -> StateType:
 
     curr_inv = avg_inventory
     curr_sales = avg_sales
-    curr_ratio = (curr_inv / curr_sales) if curr_sales and curr_sales > 0 else None
+    #curr_ratio = (curr_inv / curr_sales) if curr_sales and curr_sales > 0 else None
+    curr_ratio = (curr_sales / curr_inv) if curr_inv and curr_inv > 0 else None
+
 
     comparison_data = {
         "Metric": ["Avg Monthly Inventory", "Avg Monthly Sales", "Inventory-to-Sales Ratio"],

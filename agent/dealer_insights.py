@@ -371,7 +371,7 @@ def inventory_trend_analysis(state: StateType) -> StateType:
         df_state = df_monthly_all[df_monthly_all["STATE"] == state_val]
         state_inv = df_state["MONTHLY_INVENTORY"].mean() if not df_state.empty else None
         state_sales = df_state["TOTAL_SALES"].mean() if not df_state.empty else None
-        state_ratio = (state_inv / state_sales) if state_sales and state_sales > 0 else None
+        state_ratio = (state_sales / state_inv) if state_inv and state_inv > 0 else None
     else:
         state_inv = state_sales = state_ratio = None
 
@@ -380,7 +380,7 @@ def inventory_trend_analysis(state: StateType) -> StateType:
         df_brand = df_monthly_all[df_monthly_all["BRAND"] == brand_val]
         brand_inv = df_brand["MONTHLY_INVENTORY"].mean() if not df_brand.empty else None
         brand_sales = df_brand["TOTAL_SALES"].mean() if not df_brand.empty else None
-        brand_ratio = (brand_inv / brand_sales) if brand_sales and brand_sales > 0 else None
+        brand_ratio = (brand_sales / brand_inv) if brand_inv and brand_inv > 0 else None
     else:
         brand_inv = brand_sales = brand_ratio = None
 

@@ -5,5 +5,12 @@
     "industry_analysis_agent": "./agent/industry_analysis.py:graph",
     "prompt_executor_agent": "./agent/prompt_executor.py:graph",
     "dealer_insights_agent": "./agent/dealer_insights.py:graph"
+  },
+  "store": {
+    "ttl": {
+      "refresh_on_read": false,
+      "sweep_interval_minutes": 60,
+      "default_ttl": 10080 
+    }
   }
 }

@@ -60,7 +60,7 @@ def load_aws_variables():
 
     return secrets
 
-def load_environment():
+def load_encrypted_variables():
     # secrets = load_aws_variables()
     # if secrets:
     #    return True
@@ -72,5 +72,6 @@ def load_environment():
     passphrase=os.getenv("DOTENV_PASSPHRASE")
     BASE_DIR = Path(__file__).resolve().parent   
     #load_encrypted_dotenv(".env.enc",passphrase)  
-    load_encrypted_dotenv(BASE_DIR / ".env.enc",passphrase)
+    env = os.getenv("APP_ENVIRONMENT", "dev")
+    load_encrypted_dotenv(BASE_DIR / ".env.enc."+env,passphrase)
     return True

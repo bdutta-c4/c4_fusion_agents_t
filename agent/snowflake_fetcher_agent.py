@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 
 
 sys.path.append("agent")
-from  agent.environments import load_aws_variables, load_environment
+from  agent.environments import load_aws_variables, load_encrypted_variables
 
 
 from sql_handler import SnowflakeSQLHandler
@@ -29,7 +29,7 @@ current_path=os.path.dirname(os.path.abspath(__file__))
 
 load_dotenv(os.path.join(current_path,".env"), override=True)
 
-load_environment()
+load_encrypted_variables()
 
 # Configure the logging system
 logging.basicConfig(

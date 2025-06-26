@@ -73,5 +73,6 @@ def load_encrypted_variables():
     BASE_DIR = Path(__file__).resolve().parent   
     #load_encrypted_dotenv(".env.enc",passphrase)  
     env = os.getenv("APP_ENVIRONMENT", "dev")
-    load_encrypted_dotenv(BASE_DIR / ".env.enc."+env,passphrase)
+    env_path = f".env.enc.{env}"
+    load_encrypted_dotenv(BASE_DIR / env_path,passphrase)
     return True

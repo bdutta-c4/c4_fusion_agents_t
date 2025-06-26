@@ -12,9 +12,8 @@ from langchain_core.prompts import ChatPromptTemplate
 
 LOG_FILE = 'Fusion-industry_analysis.log'
 
-load_dotenv("./agent/.env", override=True)
-from  agent.environments import load_environment
-load_environment()
+from  agent.environments import load_encrypted_variables
+load_encrypted_variables()
 
 # Configure the logging system
 logging.basicConfig(

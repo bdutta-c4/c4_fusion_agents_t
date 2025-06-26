@@ -40,10 +40,11 @@ def main(env: str, path_out: str, passphrase: str):
     key  = derive_key(passphrase, salt)
     data = open("envfile.txt", "rb").read()
     cipher = Fernet(key).encrypt(data)
-    with open(path_out, "wb") as f:
+    env_path_out = f".env.enc.{env}"
+    with open(env_path_out, "wb") as f:
         f.write(base64.b64encode(salt) + b"\n" + cipher)
-    print(f"Encrypted {env} → {path_out}  (keep passphrase & salt safe!)")
-    os.remove("envfile.txt")
+    print(f"Encrypted {env} → {env_path_out}  (keep passphrase & salt safe!)")
+    #os.remove("envfile.txt")
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()

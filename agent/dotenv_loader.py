@@ -17,10 +17,13 @@ def _derive_key(passphrase: str, salt: bytes) -> bytes:
 
 def load_encrypted_dotenv(path: str = ".env.enc",
                           passphrase: str | None = None) -> dict:
+    curr_env = os.getenv("APP_ENVIRONMENT", "dev")
+    env_path = f".env.enc.{curr_env}"
+
     passphrase = passphrase or os.getenv("DOTENV_PASSPHRASE")
     if not passphrase:
         raise RuntimeError("No passphrase supplied (env DOTENV_PASSPHRASE missing)")
-    with open(path, "rb") as f:
+    with open(env_path, "rb") as f:
         salt_b64, cipher = f.read().split(b"\n", 1)
     key = _derive_key(passphrase, base64.b64decode(salt_b64))
     plaintext = Fernet(key).decrypt(cipher)

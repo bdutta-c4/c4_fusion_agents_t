@@ -433,7 +433,8 @@ def get_basic_dealership_info_query():
         ZIP,
         WEBSITE_PROVIDER,
         WEBSITE_URL,
-        OEM_PROGRAM AS OEM_Name
+        OEM_PROGRAM AS OEM_Name,
+        STATUS
     FROM CLIENT_DETAILS
     WHERE JIRA_ID = %s
     """
@@ -441,6 +442,10 @@ def get_basic_dealership_info_query():
 
 @with_description("The average monthly total sales (both new and used) for the given dealership between {start_date} and {end_date}.")
 def get_aggregated_inventory_sales_query():
+    """Returns the average monthly inventory and sales for the given dealership.
+    The logic excludes months with incomplete data which also accounts for the
+    7 day lag in sales data availability.
+    """
     return """
     WITH MonthlySales AS (
         SELECT
@@ -452,7 +457,10 @@ def get_aggregated_inventory_sales_query():
         FROM INVENTORY_AND_SALES
         WHERE
             JIRA_ID = %(jira_id)s
-            AND DATE_FROM_PARTS(YEAR, MONTH, 1) BETWEEN %(start_date)s AND %(end_date)s
+            AND DATE_FROM_PARTS(YEAR, MONTH, 1) >= DATE_TRUNC('MONTH', DATE(%(start_date)s))
+            AND DATE_FROM_PARTS(YEAR, MONTH, 1) <= DATE_TRUNC('MONTH', DATE(%(end_date)s))
+            AND LAST_DAY(DATE_FROM_PARTS(YEAR, MONTH, 1)) <= DATE(%(end_date)s)
+            AND DATE_FROM_PARTS(YEAR, MONTH, 1) < DATE_TRUNC('MONTH', DATEADD('DAY', -7, CURRENT_DATE()))
         GROUP BY JIRA_ID, MONTH, YEAR
     )
     SELECT
@@ -478,6 +486,7 @@ def get_monthly_inventory_sales_query():
     FROM INVENTORY_AND_SALES
     WHERE JIRA_ID = %(jira_id)s
     AND DATE_FROM_PARTS(YEAR, MONTH, 1) BETWEEN %(start_date)s AND %(end_date)s
+    AND DATE_FROM_PARTS(YEAR, MONTH, 1) < DATE_TRUNC('MONTH', DATEADD('DAY', -7, CURRENT_DATE()))
     ORDER BY YEAR ASC, MONTH ASC
     """
 
@@ -536,114 +545,136 @@ def get_ga4_website_traffic_query():
 @with_description("Statistics about mystery shops response times for the given dealership between {start_date} and {end_date}.")
 def get_mystery_shop_stats_query():
     return """
-    WITH time_diff_calc AS (
-   SELECT
-    resptimes.jira_id,
-    resptimes.mystery_shop_id,
-    resptimes.YEAR,resptimes.MONTH,
-    create_date,
-    date_started,
-    resptranscripts.event_type,
-    DATEDIFF (SECOND,CAST(date_started AS TIMESTAMP),CAST(event_date AS TIMESTAMP)) / 60 AS "Event_RespTimes",
-    resptimes.personal_email_response_time,
-    ROW_NUMBER() OVER (
-      PARTITION BY resptimes.mystery_shop_id,resptranscripts.event_type
-      ORDER BY
-        DATEDIFF (SECOND,CAST(date_started AS TIMESTAMP),CAST(event_date AS TIMESTAMP)) / 60
-    ) AS rn
-  FROM
-    MYSTERY_SHOPS_CLIENT_RESPONSE_TIMES AS resptimes
-    JOIN MYSTERY_SHOPS_CLIENT_RESPONSE_TRANSCRIPTS AS resptranscripts ON resptimes.mystery_shop_id = resptranscripts.mystery_shop_id
-  WHERE
-    DATE_FROM_PARTS (resptimes.YEAR, resptimes.MONTH, 1) BETWEEN %(start_date)s AND %(end_date)s
-    AND resptimes.jira_id = %(jira_id)s
-),
-Event_Seq_qry as (
-SELECT
- Jira_id,Mystery_shop_id,"YEAR","MONTH",create_date,date_started,event_type,"PERSONAL_EMAIL_RESPONSE_TIME","Event_RespTimes"
-FROM
-  time_diff_calc
-WHERE
-  rn = 1
-),
-Resp_qry as (
-select
-Jira_id,Mystery_shop_id,create_date,Year,Month,date_started,Personal_Email_Response_Time,Call_Response_time,Auto_Email_Response_Time,Text_Response_Time,Voicemail_Response_Time
-from Event_Seq_qry
-Pivot(min("Event_RespTimes") For event_type in ('email', 'call', 'voicemail', 'text')) as P (Jira_id,Mystery_shop_id,create_date,Year,Month,date_started,Personal_Email_Response_Time,Call_Response_time,Auto_Email_Response_Time,Text_Response_Time,Voicemail_Response_Time)
-),
-Resp_score_qry as (
-Select
-Jira_id,
-Create_Date,Mystery_shop_id,YEAR,MONTH,
-CASE WHEN CAST(Auto_Email_Response_Time AS DECIMAL) > 0 AND CAST(Auto_Email_Response_Time AS DECIMAL) < 60 THEN CAST(Auto_Email_Response_Time AS DECIMAL) END AS auto_email_valid,
-CASE WHEN CAST(Personal_Email_Response_Time AS DECIMAL) > 0 AND CAST(Personal_Email_Response_Time AS DECIMAL) < 60
-THEN CAST(Personal_Email_Response_Time AS DECIMAL) END AS personal_email_valid,
-CASE WHEN CAST(Call_Response_time AS DECIMAL) > 0 AND CAST(Call_Response_time AS DECIMAL) < 60
-THEN CAST(Call_Response_time AS DECIMAL) END AS call_valid,
-CASE WHEN CAST(Text_Response_Time AS DECIMAL) > 0 AND CAST(Text_Response_Time AS DECIMAL) < 60
-THEN CAST(Text_Response_Time AS DECIMAL) END AS text_valid
-from Resp_qry
-),
-Resp_validscores as(
-select Jira_id,Mystery_shop_id, YEAR, MONTH,Create_Date,
-call_valid,auto_email_valid,personal_email_valid,text_valid,
-CASE
-   WHEN auto_email_valid is NULL Then 0.0
-   WHEN CAST(auto_email_valid AS DECIMAL) > 0 AND CAST(auto_email_valid AS DECIMAL) < 5 Then 1.0
-   WHEN CAST(auto_email_valid AS DECIMAL) > 0 AND CAST(auto_email_valid AS DECIMAL) >= 5 Then 0.5
-END as AUTO_EMAIL_SCORE,
-CASE
-   WHEN personal_email_valid is NULL Then 0.0
-   WHEN CAST(personal_email_valid AS DECIMAL) > 0 AND CAST(personal_email_valid AS DECIMAL) < 20 Then 1.0
-   WHEN CAST(personal_email_valid AS DECIMAL) > 0 AND CAST(personal_email_valid AS DECIMAL) >= 20  Then 0.5
-END as PERSONAL_EMAIL_SCORE,
-CASE
-   WHEN call_valid is NULL Then 0.0
-   WHEN CAST(call_valid AS DECIMAL) > 0 AND CAST(call_valid AS DECIMAL) < 20 Then 1.0
-   WHEN CAST(call_valid AS DECIMAL) > 0 AND CAST(call_valid AS DECIMAL) >= 20  Then 0.5
-END as CALL_SCORE,
-CASE
-   WHEN text_valid is NULL Then 0.0
-   WHEN CAST(text_valid AS DECIMAL) > 0 AND CAST(text_valid AS DECIMAL) < 5 Then 1.0
-   WHEN CAST(text_valid AS DECIMAL) > 0 AND CAST(text_valid AS DECIMAL) >= 5  Then 0.5
-END as TEXT_SCORE
-from Resp_score_qry
-),
-monthly_respqry as (
-SELECT
-      YEAR,
-      MONTH,
-      count(distinct Mystery_shop_id) as Num_Mystery_shops,
-      AVG(auto_email_valid)     AS avg_auto_email,
-      AVG(personal_email_valid) AS avg_personal_email,
-      AVG(call_valid)           AS avg_call_time,
-      AVG(text_valid)           AS avg_text_time,
-      COUNT(auto_email_valid)   AS count_auto_email,
-      COUNT(personal_email_valid) AS count_personal_email,
-      COUNT(call_valid)           AS count_call,
-      COUNT(text_valid)           AS count_text,
-      sum(Auto_email_score) as auto_email_score,
-      sum(Personal_email_score) as personal_email_score,
-      sum(call_score) as call_score,
-      sum(text_score) as text_score,
-
-    FROM Resp_validscores
-    GROUP BY YEAR, MONTH
-    ORDER BY YEAR, MONTH
+    WITH source_times AS (
+        -- Step 1: Select the pre-calculated response times directly from the source table.
+        SELECT
+            Jira_id,
+            Mystery_shop_id,
+            YEAR,
+            MONTH,
+            Create_Date,
+            AUTO_EMAIL_RESPONSE_TIME,
+            PERSONAL_EMAIL_RESPONSE_TIME,
+            CALL_RESPONSE_TIME,
+            TEXT_RESPONSE_TIME
+        FROM
+            MYSTERY_SHOPS_CLIENT_RESPONSE_TIMES
+        WHERE
+            DATE_FROM_PARTS (YEAR, MONTH, 1) BETWEEN %(start_date)s AND %(end_date)s
+    ),
+    Resp_score_qry AS (
+        -- Step 2: Validate the times (must be between 0 and 60 minutes).
+        SELECT
+            Jira_id,
+            Create_Date,
+            Mystery_shop_id,
+            YEAR,
+            MONTH,
+            CASE
+                WHEN CAST(AUTO_EMAIL_RESPONSE_TIME AS DECIMAL) > 0 AND CAST(AUTO_EMAIL_RESPONSE_TIME AS DECIMAL) < 60
+                THEN CAST(AUTO_EMAIL_RESPONSE_TIME AS DECIMAL)
+            END AS auto_email_valid,
+            CASE
+                WHEN CAST(PERSONAL_EMAIL_RESPONSE_TIME AS DECIMAL) > 0 AND CAST(PERSONAL_EMAIL_RESPONSE_TIME AS DECIMAL) < 60
+                THEN CAST(PERSONAL_EMAIL_RESPONSE_TIME AS DECIMAL)
+            END AS personal_email_valid,
+            CASE
+                WHEN CAST(CALL_RESPONSE_TIME AS DECIMAL) > 0 AND CAST(CALL_RESPONSE_TIME AS DECIMAL) < 60
+                THEN CAST(CALL_RESPONSE_TIME AS DECIMAL)
+            END AS call_valid,
+            CASE
+                WHEN CAST(TEXT_RESPONSE_TIME AS DECIMAL) > 0 AND CAST(TEXT_RESPONSE_TIME AS DECIMAL) < 60
+                THEN CAST(TEXT_RESPONSE_TIME AS DECIMAL)
+            END AS text_valid
+        FROM
+            source_times
+    ),
+    Resp_validscores AS (
+        -- Step 3: Assign a score (0, 0.5, or 1.0) based on the speed of the valid response times.
+        SELECT
+            Jira_id,
+            Mystery_shop_id,
+            YEAR,
+            MONTH,
+            Create_Date,
+            call_valid,
+            auto_email_valid,
+            personal_email_valid,
+            text_valid,
+            CASE
+                WHEN auto_email_valid IS NULL THEN 0.0
+                WHEN CAST(auto_email_valid AS DECIMAL) > 0 AND CAST(auto_email_valid AS DECIMAL) < 5 THEN 1.0
+                WHEN CAST(auto_email_valid AS DECIMAL) > 0 AND CAST(auto_email_valid AS DECIMAL) >= 5 THEN 0.5
+            END AS AUTO_EMAIL_SCORE,
+            CASE
+                WHEN personal_email_valid IS NULL THEN 0.0
+                WHEN CAST(personal_email_valid AS DECIMAL) > 0 AND CAST(personal_email_valid AS DECIMAL) < 20 THEN 1.0
+                WHEN CAST(personal_email_valid AS DECIMAL) > 0 AND CAST(personal_email_valid AS DECIMAL) >= 20 THEN 0.5
+            END AS PERSONAL_EMAIL_SCORE,
+            CASE
+                WHEN call_valid IS NULL THEN 0.0
+                WHEN CAST(call_valid AS DECIMAL) > 0 AND CAST(call_valid AS DECIMAL) < 20 THEN 1.0
+                WHEN CAST(call_valid AS DECIMAL) > 0 AND CAST(call_valid AS DECIMAL) >= 20 THEN 0.5
+            END AS CALL_SCORE,
+            CASE
+                WHEN text_valid IS NULL THEN 0.0
+                WHEN CAST(text_valid AS DECIMAL) > 0 AND CAST(text_valid AS DECIMAL) < 5 THEN 1.0
+                WHEN CAST(text_valid AS DECIMAL) > 0 AND CAST(text_valid AS DECIMAL) >= 5 THEN 0.5
+            END AS TEXT_SCORE
+        FROM
+            Resp_score_qry
+    ),
+    monthly_respqry AS (
+        -- Step 4: Aggregate all the data into a monthly report.
+        SELECT
+            JIRA_ID,
+            YEAR,
+            MONTH,
+            COUNT(DISTINCT Mystery_shop_id) AS Num_Mystery_shops,
+            CAST(ROUND(AVG(auto_email_valid), 1) AS DECIMAL(38, 1)) AS avg_auto_email,
+            CAST(ROUND(AVG(personal_email_valid), 1) AS DECIMAL(38, 1)) AS avg_personal_email,
+            CAST(ROUND(AVG(call_valid), 1) AS DECIMAL(38, 1)) AS avg_call_time,
+            CAST(ROUND(AVG(text_valid), 1) AS DECIMAL(38, 1)) AS avg_text_time,
+            COUNT(auto_email_valid) AS count_auto_email,
+            COUNT(personal_email_valid) AS count_personal_email,
+            COUNT(call_valid) AS count_call,
+            COUNT(text_valid) AS count_text,
+            SUM(Auto_email_score) AS auto_email_score,
+            SUM(Personal_email_score) AS personal_email_score,
+            SUM(call_score) AS call_score,
+            SUM(text_score) AS text_score
+        FROM
+            Resp_validscores
+        GROUP BY
+            JIRA_ID,
+            YEAR,
+            MONTH
+        ORDER BY
+            JIRA_ID,
+            YEAR,
+            MONTH
     )
-    select
-    round(avg(avg_auto_email),0)  as Avg_auto_email,
-    round(avg(avg_personal_email),0)  as Avg_personal_email,
-    round(avg(avg_call_time),0) as Avg_call_time,
-    round(avg(avg_text_time),0) as Avg_text_time,
-    sum(Num_Mystery_shops) as Num_Mystery_shops,
-    sum(auto_email_score) as auto_email_score,
-    sum(personal_email_score) as personal_email_score,
-    sum(call_score) as call_score,
-    sum(text_score) as text_score,
-
-    from monthly_respqry
+    -- Final Step: Select the monthly report data for the specified jira_id.
+    SELECT
+        YEAR,
+        MONTH,
+        avg_auto_email,
+        avg_personal_email,
+        avg_call_time,
+        avg_text_time,
+        count_auto_email,
+        count_personal_email,
+        count_call,
+        count_text,
+        Num_Mystery_shops,
+        auto_email_score,
+        personal_email_score,
+        call_score,
+        text_score
+    FROM
+        monthly_respqry
+    WHERE
+        jira_id = %(jira_id)s;
     """
 
 
@@ -684,6 +715,7 @@ def get_overall_sales_rank_query():
          ON cd.JIRA_ID = inv.JIRA_ID
 
          AND DATE_FROM_PARTS(inv.YEAR, inv.MONTH, 1) BETWEEN %(start_date)s AND %(end_date)s
+         AND DATE_FROM_PARTS(inv.YEAR, inv.MONTH, 1) < DATE_TRUNC('MONTH', DATEADD('DAY', -7, CURRENT_DATE()))
       GROUP BY cd.JIRA_ID,cd.state,cd.brand
       ),
 RankedSales AS (
@@ -722,6 +754,7 @@ def get_oem_sales_rank_query():
       LEFT JOIN INVENTORY_AND_SALES i
          ON c.JIRA_ID = i.JIRA_ID
          AND DATE_FROM_PARTS(i.YEAR, i.MONTH, 1) BETWEEN %(start_date)s AND %(end_date)s
+         AND DATE_FROM_PARTS(i.YEAR, i.MONTH, 1) < DATE_TRUNC('MONTH', DATEADD('DAY', -7, CURRENT_DATE()))
       GROUP BY c.JIRA_ID, c.OEM_PROGRAM
     ),
     OEMFiltered AS (
@@ -757,6 +790,7 @@ def get_state_aggregated_metrics_query():
           AVG(NEW_INVENTORY_AVERAGE + USED_INVENTORY_AVERAGE) AS avg_inventory
       FROM INVENTORY_AND_SALES
       WHERE DATE_FROM_PARTS(YEAR, MONTH, 1) BETWEEN %(start_date)s AND %(end_date)s
+      AND DATE_FROM_PARTS(YEAR, MONTH, 1) < DATE_TRUNC('MONTH', DATEADD('DAY', -7, CURRENT_DATE()))
       GROUP BY JIRA_ID
     ),
     AdsAgg AS (
@@ -800,6 +834,7 @@ def get_brand_aggregated_metrics_query():
           AVG(NEW_INVENTORY_AVERAGE + USED_INVENTORY_AVERAGE) AS avg_inventory
       FROM INVENTORY_AND_SALES
       WHERE DATE_FROM_PARTS(YEAR, MONTH, 1) BETWEEN %(start_date)s AND %(end_date)s
+      AND DATE_FROM_PARTS(YEAR, MONTH, 1) < DATE_TRUNC('MONTH', DATEADD('DAY', -7, CURRENT_DATE()))
       GROUP BY JIRA_ID
     ),
     AdsAgg AS (
@@ -843,6 +878,7 @@ def get_oem_group_aggregated_metrics_query():
           AVG(NEW_INVENTORY_AVERAGE + USED_INVENTORY_AVERAGE) AS avg_inventory
       FROM INVENTORY_AND_SALES
       WHERE DATE_FROM_PARTS(YEAR, MONTH, 1) BETWEEN %(start_date)s AND %(end_date)s
+      AND DATE_FROM_PARTS(YEAR, MONTH, 1) < DATE_TRUNC('MONTH', DATEADD('DAY', -7, CURRENT_DATE()))
       GROUP BY JIRA_ID
     ),
     AdsAgg AS (
@@ -889,6 +925,7 @@ def get_all_dealers_aggregated_metrics_query():
           AVG(NEW_INVENTORY_AVERAGE + USED_INVENTORY_AVERAGE) AS avg_inventory_per_month
       FROM INVENTORY_AND_SALES
       WHERE DATE_FROM_PARTS(YEAR, MONTH, 1) BETWEEN %(start_date)s AND %(end_date)s
+      AND DATE_FROM_PARTS(YEAR, MONTH, 1) < DATE_TRUNC('MONTH', DATEADD('DAY', -7, CURRENT_DATE()))
       GROUP BY JIRA_ID
     ),
     GA_PreAgg AS (
@@ -946,6 +983,7 @@ def get_all_dealers_monthly_data_query():
             (i.NEW_INVENTORY_AVERAGE + i.USED_INVENTORY_AVERAGE) AS monthly_inventory
         FROM INVENTORY_AND_SALES i
         WHERE DATE_FROM_PARTS(i.YEAR, i.MONTH, 1) BETWEEN %(start_date)s AND %(end_date)s
+            AND DATE_FROM_PARTS(i.YEAR, i.MONTH, 1) < DATE_TRUNC('MONTH', DATEADD('DAY', -7, CURRENT_DATE()))
     ),
     GA AS (
         SELECT
@@ -1013,104 +1051,85 @@ def get_all_dealers_monthly_data_query():
 @with_description("Mystery shop response time metrics across all dealerships between {start_date} and {end_date}.")
 def get_all_dealers_monthly_mystery_query():
     return """
-    WITH time_diff_calc AS (
-   SELECT
-    resptimes.jira_id,
-    resptimes.mystery_shop_id,
-    resptimes.YEAR,resptimes.MONTH,
-    create_date,
-    date_started,
-    resptranscripts.event_type,
-    DATEDIFF (SECOND,CAST(date_started AS TIMESTAMP),CAST(event_date AS TIMESTAMP)) / 60 AS "Event_RespTimes",
-    resptimes.personal_email_response_time,
-    ROW_NUMBER() OVER (
-      PARTITION BY resptimes.mystery_shop_id,resptranscripts.event_type
-      ORDER BY
-        DATEDIFF (SECOND,CAST(date_started AS TIMESTAMP),CAST(event_date AS TIMESTAMP)) / 60
-    ) AS rn
-  FROM
-    MYSTERY_SHOPS_CLIENT_RESPONSE_TIMES AS resptimes
-    JOIN MYSTERY_SHOPS_CLIENT_RESPONSE_TRANSCRIPTS AS resptranscripts ON resptimes.mystery_shop_id = resptranscripts.mystery_shop_id
-  WHERE
-    DATE_FROM_PARTS (resptimes.YEAR, resptimes.MONTH, 1) BETWEEN %(start_date)s AND %(end_date)s
-),
-Event_Seq_qry as (
-SELECT
- Jira_id,Mystery_shop_id,"YEAR","MONTH",create_date,date_started,event_type,"PERSONAL_EMAIL_RESPONSE_TIME","Event_RespTimes"
-FROM
-  time_diff_calc
-WHERE
-  rn = 1
-),
-Resp_qry as (
-select
-Jira_id,Mystery_shop_id,create_date,Year,Month,date_started,Personal_Email_Response_Time,Call_Response_time,Auto_Email_Response_Time,Text_Response_Time,Voicemail_Response_Time
-from Event_Seq_qry
-Pivot(min("Event_RespTimes") For event_type in ('email', 'call', 'voicemail', 'text')) as P (Jira_id,Mystery_shop_id,create_date,Year,Month,date_started,Personal_Email_Response_Time,Call_Response_time,Auto_Email_Response_Time,Text_Response_Time,Voicemail_Response_Time)
-),
-Resp_score_qry as (
-Select
-Jira_id,
-Create_Date,Mystery_shop_id,YEAR,MONTH,
-CASE WHEN CAST(Auto_Email_Response_Time AS DECIMAL) > 0 AND CAST(Auto_Email_Response_Time AS DECIMAL) < 60 THEN CAST(Auto_Email_Response_Time AS DECIMAL) END AS auto_email_valid,
-CASE WHEN CAST(Personal_Email_Response_Time AS DECIMAL) > 0 AND CAST(Personal_Email_Response_Time AS DECIMAL) < 60
-THEN CAST(Personal_Email_Response_Time AS DECIMAL) END AS personal_email_valid,
-CASE WHEN CAST(Call_Response_time AS DECIMAL) > 0 AND CAST(Call_Response_time AS DECIMAL) < 60
-THEN CAST(Call_Response_time AS DECIMAL) END AS call_valid,
-CASE WHEN CAST(Text_Response_Time AS DECIMAL) > 0 AND CAST(Text_Response_Time AS DECIMAL) < 60
-THEN CAST(Text_Response_Time AS DECIMAL) END AS text_valid
-from Resp_qry
-),
-Resp_validscores as(
-select Jira_id,Mystery_shop_id, YEAR, MONTH,Create_Date,
-call_valid,auto_email_valid,personal_email_valid,text_valid,
-CASE
-   WHEN auto_email_valid is NULL Then 0.0
-   WHEN CAST(auto_email_valid AS DECIMAL) > 0 AND CAST(auto_email_valid AS DECIMAL) < 5 Then 1.0
-   WHEN CAST(auto_email_valid AS DECIMAL) > 0 AND CAST(auto_email_valid AS DECIMAL) >= 5 Then 0.5
-END as AUTO_EMAIL_SCORE,
-CASE
-   WHEN personal_email_valid is NULL Then 0.0
-   WHEN CAST(personal_email_valid AS DECIMAL) > 0 AND CAST(personal_email_valid AS DECIMAL) < 20 Then 1.0
-   WHEN CAST(personal_email_valid AS DECIMAL) > 0 AND CAST(personal_email_valid AS DECIMAL) >= 20  Then 0.5
-END as PERSONAL_EMAIL_SCORE,
-CASE
-   WHEN call_valid is NULL Then 0.0
-   WHEN CAST(call_valid AS DECIMAL) > 0 AND CAST(call_valid AS DECIMAL) < 20 Then 1.0
-   WHEN CAST(call_valid AS DECIMAL) > 0 AND CAST(call_valid AS DECIMAL) >= 20  Then 0.5
-END as CALL_SCORE,
-CASE
-   WHEN text_valid is NULL Then 0.0
-   WHEN CAST(text_valid AS DECIMAL) > 0 AND CAST(text_valid AS DECIMAL) < 5 Then 1.0
-   WHEN CAST(text_valid AS DECIMAL) > 0 AND CAST(text_valid AS DECIMAL) >= 5  Then 0.5
-END as TEXT_SCORE
-from Resp_score_qry
-),
-monthly_respqry as (
-SELECT
-      JIRA_ID,
-      YEAR,
-      MONTH,
-      count(distinct Mystery_shop_id) as Num_Mystery_shops,
-      AVG(auto_email_valid)     AS avg_auto_email,
-      AVG(personal_email_valid) AS avg_personal_email,
-      AVG(call_valid)           AS avg_call_time,
-      AVG(text_valid)           AS avg_text_time,
-      COUNT(auto_email_valid)   AS count_auto_email,
-      COUNT(personal_email_valid) AS count_personal_email,
-      COUNT(call_valid)           AS count_call,
-      COUNT(text_valid)           AS count_text,
-      sum(Auto_email_score) as auto_email_score,
-      sum(Personal_email_score) as personal_email_score,
-      sum(call_score) as call_score,
-      sum(text_score) as text_score,
-
-    FROM Resp_validscores
-    GROUP BY JIRA_ID,YEAR, MONTH
-    ORDER BY JIRA_ID,YEAR, MONTH
+    WITH source_times AS (
+        -- Step 1: Use the pre-calculated response times directly from the source table.
+        SELECT
+            Jira_id,
+            Mystery_shop_id,
+            YEAR,
+            MONTH,
+            Create_Date,
+            AUTO_EMAIL_RESPONSE_TIME,
+            PERSONAL_EMAIL_RESPONSE_TIME,
+            CALL_RESPONSE_TIME,
+            TEXT_RESPONSE_TIME
+        FROM
+            MYSTERY_SHOPS_CLIENT_RESPONSE_TIMES
+        WHERE
+            DATE_FROM_PARTS (YEAR, MONTH, 1) BETWEEN %(start_date)s AND %(end_date)s
+    ),
+    Resp_score_qry AS (
+        -- Step 2: Validate the times (must be between 0 and 60 minutes).
+        SELECT
+            Jira_id,
+            Mystery_shop_id,
+            YEAR,
+            MONTH,
+            CASE WHEN CAST(AUTO_EMAIL_RESPONSE_TIME AS DECIMAL) > 0 AND CAST(AUTO_EMAIL_RESPONSE_TIME AS DECIMAL) < 60 THEN CAST(AUTO_EMAIL_RESPONSE_TIME AS DECIMAL) END AS auto_email_valid,
+            CASE WHEN CAST(PERSONAL_EMAIL_RESPONSE_TIME AS DECIMAL) > 0 AND CAST(PERSONAL_EMAIL_RESPONSE_TIME AS DECIMAL) < 60 THEN CAST(PERSONAL_EMAIL_RESPONSE_TIME AS DECIMAL) END AS personal_email_valid,
+            CASE WHEN CAST(CALL_RESPONSE_TIME AS DECIMAL) > 0 AND CAST(CALL_RESPONSE_TIME AS DECIMAL) < 60 THEN CAST(CALL_RESPONSE_TIME AS DECIMAL) END AS call_valid,
+            CASE WHEN CAST(TEXT_RESPONSE_TIME AS DECIMAL) > 0 AND CAST(TEXT_RESPONSE_TIME AS DECIMAL) < 60 THEN CAST(TEXT_RESPONSE_TIME AS DECIMAL) END AS text_valid
+        FROM
+            source_times
+    ),
+    Resp_validscores AS (
+        -- Step 3: Assign a score (0, 0.5, or 1.0) based on the speed of the valid response times.
+        SELECT
+            Jira_id,
+            Mystery_shop_id,
+            YEAR,
+            MONTH,
+            call_valid,
+            auto_email_valid,
+            personal_email_valid,
+            text_valid,
+            CASE WHEN auto_email_valid IS NULL THEN 0.0 WHEN CAST(auto_email_valid AS DECIMAL) > 0 AND CAST(auto_email_valid AS DECIMAL) < 5 THEN 1.0 WHEN CAST(auto_email_valid AS DECIMAL) > 0 AND CAST(auto_email_valid AS DECIMAL) >= 5 THEN 0.5 END AS AUTO_EMAIL_SCORE,
+            CASE WHEN personal_email_valid IS NULL THEN 0.0 WHEN CAST(personal_email_valid AS DECIMAL) > 0 AND CAST(personal_email_valid AS DECIMAL) < 20 THEN 1.0 WHEN CAST(personal_email_valid AS DECIMAL) > 0 AND CAST(personal_email_valid AS DECIMAL) >= 20 THEN 0.5 END AS PERSONAL_EMAIL_SCORE,
+            CASE WHEN call_valid IS NULL THEN 0.0 WHEN CAST(call_valid AS DECIMAL) > 0 AND CAST(call_valid AS DECIMAL) < 20 THEN 1.0 WHEN CAST(call_valid AS DECIMAL) > 0 AND CAST(call_valid AS DECIMAL) >= 20 THEN 0.5 END AS CALL_SCORE,
+            CASE WHEN text_valid IS NULL THEN 0.0 WHEN CAST(text_valid AS DECIMAL) > 0 AND CAST(text_valid AS DECIMAL) < 5 THEN 1.0 WHEN CAST(text_valid AS DECIMAL) > 0 AND CAST(text_valid AS DECIMAL) >= 5 THEN 0.5 END AS TEXT_SCORE
+        FROM
+            Resp_score_qry
+    ),
+    monthly_respqry AS (
+        -- Step 4: Aggregate all the data into a monthly report per JIRA_ID.
+        SELECT
+            JIRA_ID,
+            YEAR,
+            MONTH,
+            COUNT(DISTINCT Mystery_shop_id) AS Num_Mystery_shops,
+            ROUND(AVG(auto_email_valid), 1) AS avg_auto_email,
+            ROUND(AVG(personal_email_valid), 1) AS avg_personal_email,
+            ROUND(AVG(call_valid), 1) AS avg_call_time,
+            ROUND(AVG(text_valid), 1) AS avg_text_time,
+            COUNT(auto_email_valid) AS count_auto_email,
+            COUNT(personal_email_valid) AS count_personal_email,
+            COUNT(call_valid) AS count_call,
+            COUNT(text_valid) AS count_text,
+            SUM(Auto_email_score) AS auto_email_score,
+            SUM(Personal_email_score) AS personal_email_score,
+            SUM(call_score) AS call_score,
+            SUM(text_score) AS text_score
+        FROM
+            Resp_validscores
+        GROUP BY
+            JIRA_ID,
+            YEAR,
+            MONTH
     )
-    select CD.JIRA_ID,
-         CD.DEALERSHIP_NAME,
+    -- Final Step: Join the monthly stats with client details.
+    SELECT
+        CD.JIRA_ID,
+        CD.DEALERSHIP_NAME,
         CD.STATE,
         CD.BRAND,
         CD.OEM_PROGRAM AS OEM_Name,
@@ -1125,9 +1144,9 @@ SELECT
         MM.personal_email_score,
         MM.call_score,
         MM.text_score
-
-        from monthly_respqry MM, CLIENT_DETAILS CD
-        where CD.JIRA_ID = MM.JIRA_ID
+    FROM
+        monthly_respqry MM
+    JOIN CLIENT_DETAILS CD ON CD.JIRA_ID = MM.JIRA_ID;
     """
 
 
@@ -1193,116 +1212,98 @@ def get_cohort_analysis_query():
 @with_description("Mystery shop stats for all dealerships between {start_date} and {end_date}.")
 def get_all_mystery_shop_stats_query():
     return """
-    WITH time_diff_calc AS (
-   SELECT
-    resptimes.jira_id,
-    resptimes.mystery_shop_id,
-    resptimes.YEAR,resptimes.MONTH,
-    create_date,
-    date_started,
-    resptranscripts.event_type,
-    DATEDIFF (SECOND,CAST(date_started AS TIMESTAMP),CAST(event_date AS TIMESTAMP)) / 60 AS "Event_RespTimes",
-    resptimes.personal_email_response_time,
-    ROW_NUMBER() OVER (
-      PARTITION BY resptimes.mystery_shop_id,resptranscripts.event_type
-      ORDER BY
-        DATEDIFF (SECOND,CAST(date_started AS TIMESTAMP),CAST(event_date AS TIMESTAMP)) / 60
-    ) AS rn
-  FROM
-    MYSTERY_SHOPS_CLIENT_RESPONSE_TIMES AS resptimes
-    JOIN MYSTERY_SHOPS_CLIENT_RESPONSE_TRANSCRIPTS AS resptranscripts ON resptimes.mystery_shop_id = resptranscripts.mystery_shop_id
-  WHERE
-    DATE_FROM_PARTS (resptimes.YEAR, resptimes.MONTH, 1) BETWEEN %(start_date)s AND %(end_date)s
-),
-Event_Seq_qry as (
-SELECT
- Jira_id,Mystery_shop_id,"YEAR","MONTH",create_date,date_started,event_type,"PERSONAL_EMAIL_RESPONSE_TIME","Event_RespTimes"
-FROM
-  time_diff_calc
-WHERE
-  rn = 1
-),
-Resp_qry as (
-select
-Jira_id,Mystery_shop_id,create_date,Year,Month,date_started,Personal_Email_Response_Time,Call_Response_time,Auto_Email_Response_Time,Text_Response_Time,Voicemail_Response_Time
-from Event_Seq_qry
-Pivot(min("Event_RespTimes") For event_type in ('email', 'call', 'voicemail', 'text')) as P (Jira_id,Mystery_shop_id,create_date,Year,Month,date_started,Personal_Email_Response_Time,Call_Response_time,Auto_Email_Response_Time,Text_Response_Time,Voicemail_Response_Time)
-),
-Resp_score_qry as (
-Select
-Jira_id,
-Create_Date,Mystery_shop_id,YEAR,MONTH,
-CASE WHEN CAST(Auto_Email_Response_Time AS DECIMAL) > 0 AND CAST(Auto_Email_Response_Time AS DECIMAL) < 60 THEN CAST(Auto_Email_Response_Time AS DECIMAL) END AS auto_email_valid,
-CASE WHEN CAST(Personal_Email_Response_Time AS DECIMAL) > 0 AND CAST(Personal_Email_Response_Time AS DECIMAL) < 60
-THEN CAST(Personal_Email_Response_Time AS DECIMAL) END AS personal_email_valid,
-CASE WHEN CAST(Call_Response_time AS DECIMAL) > 0 AND CAST(Call_Response_time AS DECIMAL) < 60
-THEN CAST(Call_Response_time AS DECIMAL) END AS call_valid,
-CASE WHEN CAST(Text_Response_Time AS DECIMAL) > 0 AND CAST(Text_Response_Time AS DECIMAL) < 60
-THEN CAST(Text_Response_Time AS DECIMAL) END AS text_valid
-from Resp_qry
-),
-Resp_validscores as(
-select Jira_id,Mystery_shop_id, YEAR, MONTH,Create_Date,
-call_valid,auto_email_valid,personal_email_valid,text_valid,
-CASE
-   WHEN auto_email_valid is NULL Then 0.0
-   WHEN CAST(auto_email_valid AS DECIMAL) > 0 AND CAST(auto_email_valid AS DECIMAL) < 5 Then 1.0
-   WHEN CAST(auto_email_valid AS DECIMAL) > 0 AND CAST(auto_email_valid AS DECIMAL) >= 5 Then 0.5
-END as AUTO_EMAIL_SCORE,
-CASE
-   WHEN personal_email_valid is NULL Then 0.0
-   WHEN CAST(personal_email_valid AS DECIMAL) > 0 AND CAST(personal_email_valid AS DECIMAL) < 20 Then 1.0
-   WHEN CAST(personal_email_valid AS DECIMAL) > 0 AND CAST(personal_email_valid AS DECIMAL) >= 20  Then 0.5
-END as PERSONAL_EMAIL_SCORE,
-CASE
-   WHEN call_valid is NULL Then 0.0
-   WHEN CAST(call_valid AS DECIMAL) > 0 AND CAST(call_valid AS DECIMAL) < 20 Then 1.0
-   WHEN CAST(call_valid AS DECIMAL) > 0 AND CAST(call_valid AS DECIMAL) >= 20  Then 0.5
-END as CALL_SCORE,
-CASE
-   WHEN text_valid is NULL Then 0.0
-   WHEN CAST(text_valid AS DECIMAL) > 0 AND CAST(text_valid AS DECIMAL) < 5 Then 1.0
-   WHEN CAST(text_valid AS DECIMAL) > 0 AND CAST(text_valid AS DECIMAL) >= 5  Then 0.5
-END as TEXT_SCORE
-from Resp_score_qry
-),
-monthly_respqry as (
-SELECT
-      JIRA_ID,
-      YEAR,
-      MONTH,
-      count(distinct Mystery_shop_id) as Num_Mystery_shops,
-      AVG(auto_email_valid)     AS avg_auto_email,
-      AVG(personal_email_valid) AS avg_personal_email,
-      AVG(call_valid)           AS avg_call_time,
-      AVG(text_valid)           AS avg_text_time,
-      COUNT(auto_email_valid)   AS count_auto_email,
-      COUNT(personal_email_valid) AS count_personal_email,
-      COUNT(call_valid)           AS count_call,
-      COUNT(text_valid)           AS count_text,
-      sum(Auto_email_score) as auto_email_score,
-      sum(Personal_email_score) as personal_email_score,
-      sum(call_score) as call_score,
-      sum(text_score) as text_score,
-
-    FROM Resp_validscores
-    GROUP BY JIRA_ID,YEAR, MONTH
-    ORDER BY JIRA_ID,YEAR, MONTH
+    WITH source_times AS (
+        -- Step 1: Use the pre-calculated response times directly from the source table.
+        SELECT
+            Jira_id,
+            Mystery_shop_id,
+            YEAR,
+            MONTH,
+            Create_Date,
+            AUTO_EMAIL_RESPONSE_TIME,
+            PERSONAL_EMAIL_RESPONSE_TIME,
+            CALL_RESPONSE_TIME,
+            TEXT_RESPONSE_TIME
+        FROM
+            MYSTERY_SHOPS_CLIENT_RESPONSE_TIMES
+        WHERE
+            DATE_FROM_PARTS (YEAR, MONTH, 1) BETWEEN %(start_date)s AND %(end_date)s
+    ),
+    Resp_score_qry AS (
+        -- Step 2: Validate the times (must be between 0 and 60 minutes).
+        SELECT
+            Jira_id,
+            Mystery_shop_id,
+            YEAR,
+            MONTH,
+            CASE WHEN CAST(AUTO_EMAIL_RESPONSE_TIME AS DECIMAL) > 0 AND CAST(AUTO_EMAIL_RESPONSE_TIME AS DECIMAL) < 60 THEN CAST(AUTO_EMAIL_RESPONSE_TIME AS DECIMAL) END AS auto_email_valid,
+            CASE WHEN CAST(PERSONAL_EMAIL_RESPONSE_TIME AS DECIMAL) > 0 AND CAST(PERSONAL_EMAIL_RESPONSE_TIME AS DECIMAL) < 60 THEN CAST(PERSONAL_EMAIL_RESPONSE_TIME AS DECIMAL) END AS personal_email_valid,
+            CASE WHEN CAST(CALL_RESPONSE_TIME AS DECIMAL) > 0 AND CAST(CALL_RESPONSE_TIME AS DECIMAL) < 60 THEN CAST(CALL_RESPONSE_TIME AS DECIMAL) END AS call_valid,
+            CASE WHEN CAST(TEXT_RESPONSE_TIME AS DECIMAL) > 0 AND CAST(TEXT_RESPONSE_TIME AS DECIMAL) < 60 THEN CAST(TEXT_RESPONSE_TIME AS DECIMAL) END AS text_valid
+        FROM
+            source_times
+    ),
+    Resp_validscores AS (
+        -- Step 3: Assign a score (0, 0.5, or 1.0) based on the speed of the valid response times.
+        SELECT
+            Jira_id,
+            Mystery_shop_id,
+            YEAR,
+            MONTH,
+            call_valid,
+            auto_email_valid,
+            personal_email_valid,
+            text_valid,
+            CASE WHEN auto_email_valid IS NULL THEN 0.0 WHEN CAST(auto_email_valid AS DECIMAL) > 0 AND CAST(auto_email_valid AS DECIMAL) < 5 THEN 1.0 WHEN CAST(auto_email_valid AS DECIMAL) > 0 AND CAST(auto_email_valid AS DECIMAL) >= 5 THEN 0.5 END AS AUTO_EMAIL_SCORE,
+            CASE WHEN personal_email_valid IS NULL THEN 0.0 WHEN CAST(personal_email_valid AS DECIMAL) > 0 AND CAST(personal_email_valid AS DECIMAL) < 20 THEN 1.0 WHEN CAST(personal_email_valid AS DECIMAL) > 0 AND CAST(personal_email_valid AS DECIMAL) >= 20 THEN 0.5 END AS PERSONAL_EMAIL_SCORE,
+            CASE WHEN call_valid IS NULL THEN 0.0 WHEN CAST(call_valid AS DECIMAL) > 0 AND CAST(call_valid AS DECIMAL) < 20 THEN 1.0 WHEN CAST(call_valid AS DECIMAL) > 0 AND CAST(call_valid AS DECIMAL) >= 20 THEN 0.5 END AS CALL_SCORE,
+            CASE WHEN text_valid IS NULL THEN 0.0 WHEN CAST(text_valid AS DECIMAL) > 0 AND CAST(text_valid AS DECIMAL) < 5 THEN 1.0 WHEN CAST(text_valid AS DECIMAL) > 0 AND CAST(text_valid AS DECIMAL) >= 5 THEN 0.5 END AS TEXT_SCORE
+        FROM
+            Resp_score_qry
+    ),
+    monthly_respqry AS (
+        -- Step 4: Aggregate all the data into a monthly report per JIRA_ID.
+        SELECT
+            JIRA_ID,
+            YEAR,
+            MONTH,
+            COUNT(DISTINCT Mystery_shop_id) AS Num_Mystery_shops,
+            AVG(auto_email_valid) AS avg_auto_email, -- No rounding needed here, as it will be averaged again
+            AVG(personal_email_valid) AS avg_personal_email,
+            AVG(call_valid) AS avg_call_time,
+            AVG(text_valid) AS avg_text_time,
+            SUM(Auto_email_score) AS auto_email_score,
+            SUM(Personal_email_score) AS personal_email_score,
+            SUM(call_score) AS call_score,
+            SUM(text_score) AS text_score
+        FROM
+            Resp_validscores
+        GROUP BY
+            JIRA_ID,
+            YEAR,
+            MONTH
     )
+    -- Final Step: Perform a second level of aggregation to get one row per dealer for the entire period.
     SELECT
-          CD.JIRA_ID,CD.STATE,Cd.BRAND,
-          AVG(avg_auto_email)     AS avg_auto_email,
-          AVG(avg_personal_email) AS avg_personal_email,
-          AVG(avg_call_time)           AS avg_call_time,
-          AVG(avg_text_time)           AS avg_text_time,
-          sum(Num_Mystery_shops) as Num_Mystery_shops,
-          sum(Auto_email_score) as auto_email_score,
-      sum(Personal_email_score) as personal_email_score,
-      sum(call_score) as call_score,
-      sum(text_score) as text_score,
-      FROM monthly_respqry MM ,CLIENT_DETAILS CD
-      WHERE MM.jira_id = CD.jira_id
-      GROUP BY CD.JIRA_ID,CD.STATE,CD.BRAND
+        CD.JIRA_ID,
+        CD.STATE,
+        CD.BRAND,
+        ROUND(AVG(avg_auto_email), 1) AS avg_auto_email,
+        ROUND(AVG(avg_personal_email), 1) AS avg_personal_email,
+        ROUND(AVG(avg_call_time), 1) AS avg_call_time,
+        ROUND(AVG(avg_text_time), 1) AS avg_text_time,
+        SUM(Num_Mystery_shops) AS Num_Mystery_shops,
+        SUM(Auto_email_score) AS auto_email_score,
+        SUM(Personal_email_score) AS personal_email_score,
+        SUM(call_score) AS call_score,
+        SUM(text_score) AS text_score
+    FROM
+        monthly_respqry MM
+        JOIN CLIENT_DETAILS CD ON MM.jira_id = CD.jira_id
+    GROUP BY
+        CD.JIRA_ID,
+        CD.STATE,
+        CD.BRAND;
       """
 
 
@@ -1316,6 +1317,7 @@ def get_all_brands_aggregated_metrics_query():
           AVG(NEW_INVENTORY_AVERAGE + USED_INVENTORY_AVERAGE) AS avg_inventory
       FROM INVENTORY_AND_SALES
       WHERE DATE_FROM_PARTS(YEAR, MONTH, 1) BETWEEN %(start_date)s AND %(end_date)s
+      AND DATE_FROM_PARTS(YEAR, MONTH, 1) < DATE_TRUNC('MONTH', DATEADD('DAY', -7, CURRENT_DATE()))
       GROUP BY JIRA_ID
     ),
     AdsAgg AS (
@@ -1550,120 +1552,104 @@ def get_missing_channels_query():
 @with_description("Monthly mystery shops data breakdown for the given dealership between {start_date} and {end_date}.")
 def get_monthly_mystery_shop_breakdown_query():
     return """
-    WITH time_diff_calc AS (
-   SELECT
-    resptimes.jira_id,
-    resptimes.mystery_shop_id,
-    resptimes.YEAR,resptimes.MONTH,
-    create_date,
-    date_started,
-    resptranscripts.event_type,
-    DATEDIFF (SECOND,CAST(date_started AS TIMESTAMP),CAST(event_date AS TIMESTAMP)) / 60 AS "Event_RespTimes",
-    resptimes.personal_email_response_time,
-    ROW_NUMBER() OVER (
-      PARTITION BY resptimes.mystery_shop_id,resptranscripts.event_type
-      ORDER BY
-        DATEDIFF (SECOND,CAST(date_started AS TIMESTAMP),CAST(event_date AS TIMESTAMP)) / 60
-    ) AS rn
-  FROM
-    MYSTERY_SHOPS_CLIENT_RESPONSE_TIMES AS resptimes
-    JOIN MYSTERY_SHOPS_CLIENT_RESPONSE_TRANSCRIPTS AS resptranscripts ON resptimes.mystery_shop_id = resptranscripts.mystery_shop_id
-  WHERE
-    DATE_FROM_PARTS (resptimes.YEAR, resptimes.MONTH, 1) BETWEEN %(start_date)s AND %(end_date)s
-),
-Event_Seq_qry as (
-SELECT
- Jira_id,Mystery_shop_id,"YEAR","MONTH",create_date,date_started,event_type,"PERSONAL_EMAIL_RESPONSE_TIME","Event_RespTimes"
-FROM
-  time_diff_calc
-WHERE
-  rn = 1
-),
-Resp_qry as (
-select
-Jira_id,Mystery_shop_id,create_date,Year,Month,date_started,Personal_Email_Response_Time,Call_Response_time,Auto_Email_Response_Time,Text_Response_Time,Voicemail_Response_Time
-from Event_Seq_qry
-Pivot(min("Event_RespTimes") For event_type in ('email', 'call', 'voicemail', 'text')) as P (Jira_id,Mystery_shop_id,create_date,Year,Month,date_started,Personal_Email_Response_Time,Call_Response_time,Auto_Email_Response_Time,Text_Response_Time,Voicemail_Response_Time)
-),
-Resp_score_qry as (
-Select
-Jira_id,
-Create_Date,Mystery_shop_id,YEAR,MONTH,
-CASE WHEN CAST(Auto_Email_Response_Time AS DECIMAL) > 0 AND CAST(Auto_Email_Response_Time AS DECIMAL) < 60 THEN CAST(Auto_Email_Response_Time AS DECIMAL) END AS auto_email_valid,
-CASE WHEN CAST(Personal_Email_Response_Time AS DECIMAL) > 0 AND CAST(Personal_Email_Response_Time AS DECIMAL) < 60
-THEN CAST(Personal_Email_Response_Time AS DECIMAL) END AS personal_email_valid,
-CASE WHEN CAST(Call_Response_time AS DECIMAL) > 0 AND CAST(Call_Response_time AS DECIMAL) < 60
-THEN CAST(Call_Response_time AS DECIMAL) END AS call_valid,
-CASE WHEN CAST(Text_Response_Time AS DECIMAL) > 0 AND CAST(Text_Response_Time AS DECIMAL) < 60
-THEN CAST(Text_Response_Time AS DECIMAL) END AS text_valid
-from Resp_qry
-),
-Resp_validscores as(
-select Jira_id,Mystery_shop_id, YEAR, MONTH,Create_Date,
-call_valid,auto_email_valid,personal_email_valid,text_valid,
-CASE
-   WHEN auto_email_valid is NULL Then 0.0
-   WHEN CAST(auto_email_valid AS DECIMAL) > 0 AND CAST(auto_email_valid AS DECIMAL) < 5 Then 1.0
-   WHEN CAST(auto_email_valid AS DECIMAL) > 0 AND CAST(auto_email_valid AS DECIMAL) >= 5 Then 0.5
-END as AUTO_EMAIL_SCORE,
-CASE
-   WHEN personal_email_valid is NULL Then 0.0
-   WHEN CAST(personal_email_valid AS DECIMAL) > 0 AND CAST(personal_email_valid AS DECIMAL) < 20 Then 1.0
-   WHEN CAST(personal_email_valid AS DECIMAL) > 0 AND CAST(personal_email_valid AS DECIMAL) >= 20  Then 0.5
-END as PERSONAL_EMAIL_SCORE,
-CASE
-   WHEN call_valid is NULL Then 0.0
-   WHEN CAST(call_valid AS DECIMAL) > 0 AND CAST(call_valid AS DECIMAL) < 20 Then 1.0
-   WHEN CAST(call_valid AS DECIMAL) > 0 AND CAST(call_valid AS DECIMAL) >= 20  Then 0.5
-END as CALL_SCORE,
-CASE
-   WHEN text_valid is NULL Then 0.0
-   WHEN CAST(text_valid AS DECIMAL) > 0 AND CAST(text_valid AS DECIMAL) < 5 Then 1.0
-   WHEN CAST(text_valid AS DECIMAL) > 0 AND CAST(text_valid AS DECIMAL) >= 5  Then 0.5
-END as TEXT_SCORE
-from Resp_score_qry
-),
-monthly_respqry as (
-SELECT
-      JIRA_ID,
-      YEAR,
-      MONTH,
-      count(distinct Mystery_shop_id) as Num_Mystery_shops,
-      AVG(auto_email_valid)     AS avg_auto_email,
-      AVG(personal_email_valid) AS avg_personal_email,
-      AVG(call_valid)           AS avg_call_time,
-      AVG(text_valid)           AS avg_text_time,
-      COUNT(auto_email_valid)   AS count_auto_email,
-      COUNT(personal_email_valid) AS count_personal_email,
-      COUNT(call_valid)           AS count_call,
-      COUNT(text_valid)           AS count_text,
-      sum(Auto_email_score) as auto_email_score,
-      sum(Personal_email_score) as personal_email_score,
-      sum(call_score) as call_score,
-      sum(text_score) as text_score,
-
-    FROM Resp_validscores
-    GROUP BY JIRA_ID,YEAR, MONTH
-    ORDER BY JIRA_ID,YEAR, MONTH
+    WITH source_times AS (
+        -- Step 1: Select the pre-calculated response times directly from the source table.
+        SELECT
+            Jira_id,
+            Mystery_shop_id,
+            YEAR,
+            MONTH,
+            Create_Date,
+            AUTO_EMAIL_RESPONSE_TIME,
+            PERSONAL_EMAIL_RESPONSE_TIME,
+            CALL_RESPONSE_TIME,
+            TEXT_RESPONSE_TIME
+        FROM
+            MYSTERY_SHOPS_CLIENT_RESPONSE_TIMES
+        WHERE
+            DATE_FROM_PARTS (YEAR, MONTH, 1) BETWEEN %(start_date)s AND %(end_date)s
+    ),
+    Resp_score_qry AS (
+        -- Step 2: Validate the times (must be between 0 and 60 minutes).
+        SELECT
+            Jira_id,
+            Create_Date,
+            Mystery_shop_id,
+            YEAR,
+            MONTH,
+            CASE WHEN CAST(AUTO_EMAIL_RESPONSE_TIME AS DECIMAL) > 0 AND CAST(AUTO_EMAIL_RESPONSE_TIME AS DECIMAL) < 60 THEN CAST(AUTO_EMAIL_RESPONSE_TIME AS DECIMAL) END AS auto_email_valid,
+            CASE WHEN CAST(PERSONAL_EMAIL_RESPONSE_TIME AS DECIMAL) > 0 AND CAST(PERSONAL_EMAIL_RESPONSE_TIME AS DECIMAL) < 60 THEN CAST(PERSONAL_EMAIL_RESPONSE_TIME AS DECIMAL) END AS personal_email_valid,
+            CASE WHEN CAST(CALL_RESPONSE_TIME AS DECIMAL) > 0 AND CAST(CALL_RESPONSE_TIME AS DECIMAL) < 60 THEN CAST(CALL_RESPONSE_TIME AS DECIMAL) END AS call_valid,
+            CASE WHEN CAST(TEXT_RESPONSE_TIME AS DECIMAL) > 0 AND CAST(TEXT_RESPONSE_TIME AS DECIMAL) < 60 THEN CAST(TEXT_RESPONSE_TIME AS DECIMAL) END AS text_valid
+        FROM
+            source_times
+    ),
+    Resp_validscores AS (
+        -- Step 3: Assign a score (0, 0.5, or 1.0) based on the speed of the valid response times.
+        SELECT
+            Jira_id,
+            Mystery_shop_id,
+            YEAR,
+            MONTH,
+            Create_Date,
+            call_valid,
+            auto_email_valid,
+            personal_email_valid,
+            text_valid,
+            CASE WHEN auto_email_valid IS NULL THEN 0.0 WHEN CAST(auto_email_valid AS DECIMAL) > 0 AND CAST(auto_email_valid AS DECIMAL) < 5 THEN 1.0 WHEN CAST(auto_email_valid AS DECIMAL) > 0 AND CAST(auto_email_valid AS DECIMAL) >= 5 THEN 0.5 END AS AUTO_EMAIL_SCORE,
+            CASE WHEN personal_email_valid IS NULL THEN 0.0 WHEN CAST(personal_email_valid AS DECIMAL) > 0 AND CAST(personal_email_valid AS DECIMAL) < 20 THEN 1.0 WHEN CAST(personal_email_valid AS DECIMAL) > 0 AND CAST(personal_email_valid AS DECIMAL) >= 20 THEN 0.5 END AS PERSONAL_EMAIL_SCORE,
+            CASE WHEN call_valid IS NULL THEN 0.0 WHEN CAST(call_valid AS DECIMAL) > 0 AND CAST(call_valid AS DECIMAL) < 20 THEN 1.0 WHEN CAST(call_valid AS DECIMAL) > 0 AND CAST(call_valid AS DECIMAL) >= 20 THEN 0.5 END AS CALL_SCORE,
+            CASE WHEN text_valid IS NULL THEN 0.0 WHEN CAST(text_valid AS DECIMAL) > 0 AND CAST(text_valid AS DECIMAL) < 5 THEN 1.0 WHEN CAST(text_valid AS DECIMAL) > 0 AND CAST(text_valid AS DECIMAL) >= 5 THEN 0.5 END AS TEXT_SCORE
+        FROM
+            Resp_score_qry
+    ),
+    monthly_respqry AS (
+        -- Step 4: Aggregate all the data into a monthly report.
+        SELECT
+            JIRA_ID,
+            YEAR,
+            MONTH,
+            COUNT(DISTINCT Mystery_shop_id) AS Num_Mystery_shops,
+            ROUND(AVG(auto_email_valid), 1) AS avg_auto_email,
+            ROUND(AVG(personal_email_valid), 1) AS avg_personal_email,
+            ROUND(AVG(call_valid), 1) AS avg_call_time,
+            ROUND(AVG(text_valid), 1) AS avg_text_time,
+            COUNT(auto_email_valid) AS count_auto_email,
+            COUNT(personal_email_valid) AS count_personal_email,
+            COUNT(call_valid) AS count_call,
+            COUNT(text_valid) AS count_text,
+            SUM(Auto_email_score) AS auto_email_score,
+            SUM(Personal_email_score) AS personal_email_score,
+            SUM(call_score) AS call_score,
+            SUM(text_score) AS text_score
+        FROM
+            Resp_validscores
+        GROUP BY
+            JIRA_ID,
+            YEAR,
+            MONTH
     )
+    -- Final Step: Select the monthly report data for the specified jira_id.
     SELECT
-      YEAR,
-      MONTH,
-      avg_auto_email,
-      avg_personal_email,
-      avg_call_time,
-      avg_text_time,
-      count_auto_email,
-      count_personal_email,
-      count_call,
-      count_text,
-      Num_Mystery_shops,
-      auto_email_score,
-      personal_email_score,
-      call_score,
-      text_score
-
-    FROM monthly_respqry where jira_id = %(jira_id)s;
+        YEAR,
+        MONTH,
+        avg_auto_email,
+        avg_personal_email,
+        avg_call_time,
+        avg_text_time,
+        count_auto_email,
+        count_personal_email,
+        count_call,
+        count_text,
+        Num_Mystery_shops,
+        auto_email_score,
+        personal_email_score,
+        call_score,
+        text_score
+    FROM
+        monthly_respqry
+    WHERE
+        jira_id = %(jira_id)s;
     """
 
 
@@ -1724,6 +1710,7 @@ def get_inventory_leaderboard_query(*, state_filter: str = None, brand_filter: s
         LEFT JOIN INVENTORY_AND_SALES inv
             ON cd.JIRA_ID = inv.JIRA_ID
             AND DATE_FROM_PARTS(inv.YEAR, inv.MONTH, 1) BETWEEN %(start_date)s AND %(end_date)s
+            AND DATE_FROM_PARTS(inv.YEAR, inv.MONTH, 1) < DATE_TRUNC('MONTH', DATEADD('DAY', -7, CURRENT_DATE()))
         {where_clause}
         GROUP BY cd.JIRA_ID, cd.DEALERSHIP_NAME, cd.STATE, cd.BRAND
     ),
@@ -1790,6 +1777,7 @@ def get_budget_leaderboard_query(*, state_filter: str = None, brand_filter: str 
         LEFT JOIN INVENTORY_AND_SALES inv
             ON cd.JIRA_ID = inv.JIRA_ID
             AND DATE_FROM_PARTS(inv.YEAR, inv.MONTH, 1) BETWEEN %(start_date)s AND %(end_date)s
+            AND DATE_FROM_PARTS(inv.YEAR, inv.MONTH, 1) < DATE_TRUNC('MONTH', DATEADD('DAY', -7, CURRENT_DATE()))
         {where_clause}
         GROUP BY cd.JIRA_ID
     ),
@@ -1887,11 +1875,18 @@ def get_avg_monthly_budget_query():
 
 @with_description("Average monthly sales data for the given dealership")
 def get_avg_monthly_sales_query():
+    """Returns the average monthly sales for the given dealership.
+    The logic excludes months with incomplete data which also accounts for the
+    7 day lag in sales data availability.
+    """
     return """
     SELECT AVG(NEW_SALES_TOTAL + USED_SALES_TOTAL) AS AVG_MONTHLY_SALES
     FROM INVENTORY_AND_SALES
     WHERE JIRA_ID = %(jira_id)s
-      AND DATE_FROM_PARTS(YEAR, MONTH, 1) BETWEEN %(start_date)s AND %(end_date)s
+        AND DATE_FROM_PARTS(YEAR, MONTH, 1) >= DATE_TRUNC('MONTH', DATE(%(start_date)s))
+        AND DATE_FROM_PARTS(YEAR, MONTH, 1) <= DATE_TRUNC('MONTH', DATE(%(end_date)s))
+        AND LAST_DAY(DATE_FROM_PARTS(YEAR, MONTH, 1)) <= DATE(%(end_date)s)
+        AND DATE_FROM_PARTS(YEAR, MONTH, 1) < DATE_TRUNC('MONTH', DATEADD('DAY', -7, CURRENT_DATE()))
     """
 
 
@@ -1933,25 +1928,52 @@ def get_table_date_ranges_query():
             (SELECT 1 FROM {table} WHERE JIRA_ID = %(jira_id)s LIMIT 1) dummy
         """)
 
+    def get_date_sql(table: str, table_name: str, date_column: str) -> str:
+        """
+        Generate SQL to get min/max date ranges from table.
+        This table does not filter by JIRA_ID because max_date for a specific dealership may not be reflected in latest update.
+        """
+        return cleandoc(f"""
+        SELECT
+            '{table_name}' AS "Data Source",
+            MIN(TO_DATE({date_column})) AS "Min Date",
+            MAX(TO_DATE({date_column})) AS "Max Date"
+        FROM
+            {table}
+        """)
+
+    def get_date_and_history_sql(table: str, history_table: str, table_name: str, date_column: str) -> str:
+        """
+        Generate SQL to get min/max date ranges from table and earliest month from history table.
+        """
+        return cleandoc(f"""
+        SELECT
+            '{table_name}' AS "Data Source",
+            (SELECT MIN(TO_DATE(YEAR || '-' || LPAD(MONTH, 2, '0') || '-01', 'YYYY-MM-DD'))
+             FROM {history_table} WHERE JIRA_ID = %(jira_id)s) AS "Min Date",
+            (SELECT MAX(TO_DATE({date_column}))
+             FROM {table} WHERE JIRA_ID = %(jira_id)s) AS "Max Date"
+        """)
     table_configs = [
-        ('ATLAS_CALLS_MEETINGS', 'month', 'Atlas Calls Data'),
-        ('INVENTORY_AND_SALES', 'month', 'Monthly Inventory and Sales'),
-        ('INVENTORY_DAILY_CLIENTS', 'day', 'Daily Inventory'),
-        ('CLIENT_BUDGETS', 'month', 'Client Budgets'),
-        ('CLIENT_DETAILS', 'current', 'Client Details'),
-        ('GA4_PAGEANALYTICS_MONTHLY', 'month', 'GA4 Page Data'),
-        ('GA4_WEBSITESOURCES_ALLCLIENTS_MONTHLY_2024',
-            'month', 'GA4 Traffic Source Data'),
-        ('GOOGLEADSDATA_BYCAMPAIGN_ALLCLIENTS',
-            'month', 'Google Ads Campaign Data'),
-        ('MYSTERY_SHOPS_CLIENT_RESPONSE_TIMES', 'month',
-         'Mystery Shops Client Response Times'),
-        ('MYSTERY_SHOPS_CLIENT_RESPONSE_TRANSCRIPTS', 'month',
-         'Mystery Shops Client Response Transcripts'),
+        # (table, history_table, table_type, table_name, date_column)
+        ('ATLAS_CALLS_MEETINGS', None, 'date', 'Client Calls', 'DATE_CREATED'),
+        ('INVENTORY_AND_SALES', None, 'month', 'Monthly Inventory and Sales', None),
+        ('INVENTORY_DAILY_CLIENTS', None, 'day', 'Daily Inventory', None),
+        ('CLIENT_BUDGETS_DAILY', "CLIENT_BUDGETS", 'date_and_history', 'Client Budgets', 'BUDGET_DATE'),
+        ('CLIENT_DETAILS', None, 'current', 'Client Details', None),
+        # ('GA4_PAGEANALYTICS_MONTHLY', None, 'month', 'GA4 Page Data', None),
+        ('GA4_DAILY_TRAFFIC', 'GA4_WEBSITESOURCES_ALLCLIENTS_MONTHLY_2024',
+            'date_and_history', 'GA4 Traffic Source Data', 'DATE'),
+        ('GOOGLEADS_DAILY_BYCAMPAIGN', 'GOOGLEADSDATA_BYCAMPAIGN_ALLCLIENTS',
+            'date_and_history', 'Google Ads Campaign Data', 'DATE'),
+        ('MYSTERY_SHOPS_CLIENT_RESPONSE_TIMES', None, 'date',
+         'Mystery Shops Client Response Times', 'CREATE_DATE'),
+        ('MYSTERY_SHOPS_CLIENT_RESPONSE_TRANSCRIPTS', None, 'date',
+         'Mystery Shops Client Response Transcripts', 'EVENT_DATE'),
     ]
 
     sql_parts = []
-    for table, table_type, table_name in table_configs:
+    for table, history_table, table_type, table_name, date_column in table_configs:
         match table_type:
             case 'day':
                 sql_parts.append(get_ymd_sql(table, table_name))
@@ -1959,6 +1981,10 @@ def get_table_date_ranges_query():
                 sql_parts.append(get_ym_sql(table, table_name))
             case 'current':
                 sql_parts.append(get_current_sql(table, table_name))
+            case 'date':
+                sql_parts.append(get_date_sql(table, table_name, date_column))
+            case 'date_and_history':
+                sql_parts.append(get_date_and_history_sql(table, history_table, table_name, date_column))
     final_sql = "\n\nUNION ALL\n\n".join(
         sql_parts) + "\n\nORDER BY\n    \"Data Source\";"
     return "\n".join([line for line in final_sql.splitlines() if line.strip()])
@@ -1975,6 +2001,7 @@ def get_data_source_configs_query():
         UPDATE_DAY,
         HAS_UPDATE_SCHEDULE,
         IS_DAILY_UPDATE,
-        DESCRIPTION
+        DESCRIPTION,
+        UPDATE_LAG
     FROM CONFIG_DATA_SOURCES
     """)

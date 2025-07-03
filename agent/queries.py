@@ -1718,7 +1718,7 @@ def get_inventory_leaderboard_query(*, state_filter: str = None, brand_filter: s
             cd.BRAND,
             SUM(inv.NEW_SALES_TOTAL + inv.USED_SALES_TOTAL) AS total_sales,
             -- average monthly sales = total sales / count of distinct months
-            SUM(inv.NEW_SALES_TOTAL + inv.USED_SALES_TOTAL) / COUNT(DISTINCT inv.MONTH) AS avg_monthly_sales,
+            SUM(inv.NEW_SALES_TOTAL + inv.USED_SALES_TOTAL) / COUNT(DISTINCT inv.MONTH, inv.YEAR) AS avg_monthly_sales,
             AVG(inv.NEW_INVENTORY_AVERAGE + inv.USED_INVENTORY_AVERAGE) AS avg_inventory
         FROM CLIENT_DETAILS cd
         LEFT JOIN INVENTORY_AND_SALES inv
